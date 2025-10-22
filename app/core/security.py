@@ -6,8 +6,12 @@ from typing import Optional, Union
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import settings
+
+# OAuth2 스키마
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 # 비밀번호 해싱 컨텍스트
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

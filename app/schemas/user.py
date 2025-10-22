@@ -90,6 +90,12 @@ class TokenData(BaseModel):
     email: str
 
 
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    expires_in: int
+
+
 # 직무 관련
 class JobBase(BaseModel):
     job_name: str

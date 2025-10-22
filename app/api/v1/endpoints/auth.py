@@ -17,7 +17,6 @@ from app.schemas.common import BaseResponse
 from app.services.user_service import UserService
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 
 @router.post("/signup", response_model=BaseResponse)
