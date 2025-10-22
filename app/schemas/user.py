@@ -30,6 +30,7 @@ class UserUpdate(BaseModel):
     nationality: Optional[str] = None
     job_id: Optional[int] = None
     level_id: Optional[int] = None
+    theme: Optional[str] = None
 
 
 class UserPasswordChange(BaseModel):
@@ -51,9 +52,21 @@ class UserJobChange(BaseModel):
     job_id: int
 
 
+class UserThemeChange(BaseModel):
+    theme: str
+    
+    @validator('theme')
+    def validate_theme(cls, v):
+        allowed_themes = ['light', 'dark', 'auto']
+        if v not in allowed_themes:
+            raise ValueError(f'테마는 {", ".join(allowed_themes)} 중 하나여야 합니다')
+        return v
+
+
 class UserResponse(UserBase):
     user_id: int
     profile_img: Optional[str] = None
+    theme: str
     created_at: datetime
     updated_at: datetime
     
@@ -88,6 +101,11 @@ class SignupRequest(UserCreate):
 class TokenData(BaseModel):
     user_id: int
     email: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
 
 
 # 직무 관련

@@ -34,7 +34,8 @@ class UserService:
             job_id=user_data.job_id,
             level_id=user_data.level_id
         )
-        
+
+        print("hello!")
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
@@ -100,6 +101,18 @@ class UserService:
             return False
         
         user.job_id = job_id
+        user.updated_at = datetime.utcnow()
+        self.db.commit()
+        
+        return True
+    
+    def update_user_theme(self, user_id: int, theme: str) -> bool:
+        """사용자 테마 변경"""
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return False
+        
+        user.theme = theme
         user.updated_at = datetime.utcnow()
         self.db.commit()
         

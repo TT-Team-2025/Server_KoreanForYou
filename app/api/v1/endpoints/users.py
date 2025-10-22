@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user_id, oauth2_scheme
 from app.schemas.user import (
     UserResponse, UserUpdate, UserPasswordChange, 
-    UserLanguageChange, UserJobChange, UserStatusResponse
+    UserLanguageChange, UserJobChange, UserThemeChange, UserStatusResponse
 )
 from app.schemas.common import BaseResponse
 from app.services.user_service import UserService
@@ -111,6 +111,22 @@ async def change_job(
     return BaseResponse(
         success=True,
         message="직무가 변경되었습니다"
+    )
+
+
+@router.patch("/theme", response_model=BaseResponse)
+async def change_theme(
+    theme_change: UserThemeChange,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """테마 변경"""
+    user_service = UserService(db)
+    user_service.update_user_theme(current_user.user_id, theme_change.theme)
+    
+    return BaseResponse(
+        success=True,
+        message="테마가 변경되었습니다"
     )
 
 

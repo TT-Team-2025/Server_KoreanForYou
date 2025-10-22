@@ -19,6 +19,7 @@ class User(Base):
     nationality = Column(String(50))  # ISO 3166-1 alpha-2 코드
     job_id = Column(Integer, ForeignKey("jobs.job_id"))
     level_id = Column(Integer, ForeignKey("user_level.level_id"))
+    theme = Column(String(20), default="light")  # 테마 설정 (light, dark, auto)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     

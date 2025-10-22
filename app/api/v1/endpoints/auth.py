@@ -2,7 +2,6 @@
 인증 관련 API 엔드포인트
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
@@ -17,7 +16,6 @@ from app.schemas.common import BaseResponse
 from app.services.user_service import UserService
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 
 @router.post("/signup", response_model=BaseResponse)
@@ -47,14 +45,14 @@ async def signup(
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    login_data: LoginRequest,
     db: Session = Depends(get_db)
 ):
     """로그인"""
     user_service = UserService(db)
     
     # 사용자 인증
-    user = user_service.authenticate_user(form_data.username, form_data.password)
+    user = user_service.authenticate_user(login_data.email, login_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
