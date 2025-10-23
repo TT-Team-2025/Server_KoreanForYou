@@ -10,6 +10,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import settings
 
+
 # OAuth2 스키마
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
