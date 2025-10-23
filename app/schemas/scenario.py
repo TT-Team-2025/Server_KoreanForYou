@@ -23,7 +23,7 @@ class ScenarioBase(BaseModel):
     @validator('title')
     def validate_title(cls, v):
         if len(v) < 1 or len(v) > 200:
-            raise ValueError('제목은 1-200자 사이여야 합니다 test commit')
+            raise ValueError('제목은 1-200자 사이여야 합니다 commit 테스트')
         return v
 
 
