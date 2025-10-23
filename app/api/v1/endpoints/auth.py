@@ -2,22 +2,21 @@
 인증 관련 API 엔드포인트
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from app.core.database import get_db
 from app.core.security import (
     verify_password, get_password_hash, create_access_token, 
-    create_refresh_token, verify_token
+    create_refresh_token, verify_token, oauth2_scheme
 )
 from app.core.config import settings
-from app.schemas.user import SignupRequest, LoginRequest, TokenResponse
-from app.schemas.common import BaseResponse
+from app.schemas.user import SignupRequest, LoginRequest
+from app.schemas.common import BaseResponse, TokenResponse
 from app.services.user_service import UserService
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 
 @router.post("/signup", response_model=BaseResponse)
