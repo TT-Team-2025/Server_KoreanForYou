@@ -12,6 +12,10 @@ import grpc
 import logging
 import json
 import asyncio
+from dotenv import load_dotenv
+
+# .env 파일 로드 (최상단에서 한 번만 실행)
+load_dotenv()
 
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
@@ -22,7 +26,7 @@ from requests import Session as RequestsSession
 
 from dotenv import load_dotenv
 
-# .env 파일 로드 (최상단에서 한 번만 실행)
+# .env 파일 로드
 load_dotenv()
 
 from pydub import AudioSegment 
@@ -55,16 +59,16 @@ GRPC_SERVER_URL = "grpc-openapi.vito.ai:443"
 CLIENT_ID = os.environ.get("RETURN_ZERO_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("RETURN_ZERO_CLIENT_SECRET")
 
-print(f"🔍 [DEBUG] 환경 변수 로드 시도:")
-print(f"🔍 [DEBUG] CLIENT_ID: {CLIENT_ID}")
-print(f"🔍 [DEBUG] CLIENT_SECRET: {'*' * len(CLIENT_SECRET) if CLIENT_SECRET else 'None'}")
-print(f"🔍 [DEBUG] 환경 변수 존재 여부: RETURN_ZERO_CLIENT_ID={CLIENT_ID is not None}, RETURN_ZERO_CLIENT_SECRET={CLIENT_SECRET is not None}")
+print(f"[DEBUG] 환경 변수 로드 시도:")
+print(f"[DEBUG] CLIENT_ID: {CLIENT_ID}")
+print(f"[DEBUG] CLIENT_SECRET: {'*' * len(CLIENT_SECRET) if CLIENT_SECRET else 'None'}")
+print(f"[DEBUG] 환경 변수 존재 여부: RETURN_ZERO_CLIENT_ID={CLIENT_ID is not None}, RETURN_ZERO_CLIENT_SECRET={CLIENT_SECRET is not None}")
 
 # 환경 변수가 설정되지 않은 경우 경고만 출력하고 기본값 사용
 if not CLIENT_ID or not CLIENT_SECRET:
-    print("❌ Warning: RETURN_ZERO_CLIENT_ID and RETURN_ZERO_CLIENT_SECRET not set. Using default values.")
-    CLIENT_ID = CLIENT_ID or "default_client_id"
-    CLIENT_SECRET = CLIENT_SECRET or "default_client_secret"
+    print("Warning: RETURN_ZERO_CLIENT_ID and RETURN_ZERO_CLIENT_SECRET not set. Using default values.")
+    CLIENT_ID = "NONE"
+    CLIENT_SECRET = "NONE"
 
 class ExternalService:
     def __init__(self, db: Session):
