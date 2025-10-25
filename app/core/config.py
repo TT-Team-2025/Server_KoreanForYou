@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     LLM_API_URL: Optional[str] = None
     LLM_API_KEY: Optional[str] = None
     
+    # Return Zero API 설정
+    RETURN_ZERO_API_KEY: Optional[str] = None
+    RETURN_ZERO_CLIENT_ID: Optional[str] = None
+    RETURN_ZERO_CLIENT_SECRET: Optional[str] = None
+
+
     # AWS S3 설정
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
