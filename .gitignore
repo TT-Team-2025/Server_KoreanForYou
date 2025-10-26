@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# .env파일 api 유출 방지
+.env
+.env.local
+.env.production
+
 # C extensions
 *.so
 
@@ -109,6 +114,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+<<<<<<< HEAD
+=======
+K4U/ 
+>>>>>>> cb533023fc32b10649b776c1c68cc74de88210ab
 
 # Spyder project settings
 .spyderproject

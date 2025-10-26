@@ -89,7 +89,7 @@ async def change_password(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="사용자를 찾을 수 없습니다"
         )
-    
+
     return BaseResponse(
         success=True,
         message="비밀번호가 변경되었습니다"
@@ -112,7 +112,6 @@ async def change_language(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="사용자를 찾을 수 없습니다"
         )
-    
     return BaseResponse(
         success=True,
         message="모국어가 변경되었습니다"

@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# 🔹 PortAudio 설치 (PyAudio 의존성)
+RUN apt-get update && apt-get install -y \
+    portaudio19-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 # Python 의존성 설치
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
