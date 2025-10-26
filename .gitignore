@@ -114,7 +114,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-K4U/ 
+K4U/
 
 # Spyder project settings
 .spyderproject
