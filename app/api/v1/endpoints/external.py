@@ -15,7 +15,6 @@ from app.core.security import oauth2_scheme
 from app.schemas.common import BaseResponse
 from app.services.external_service import ExternalService
 
-
 router = APIRouter()
 
 

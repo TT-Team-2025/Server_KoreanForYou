@@ -49,7 +49,14 @@ async def update_user_info(
 ):
     """사용자 정보 전체 수정"""
     user_service = UserService(db)
-    user_service.update_user(current_user.user_id, user_update)
+    updated_user = user_service.update_user(current_user.user_id, user_update)
+    
+    # 사용자 정보 없을 때 예외처리 추가
+    if updated_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="사용자를 찾을 수 없습니다"
+        )
     
     return BaseResponse(
         success=True,
@@ -74,8 +81,15 @@ async def change_password(
         )
     
     # 새 비밀번호로 변경
-    user_service.update_user_password(current_user.user_id, password_change.new_password)
+    updated_user_password = user_service.update_user_password(current_user.user_id, password_change.new_password)
     
+    # 사용자 정보 없을 때 예외처리 추가
+    if updated_user_password is False:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="사용자를 찾을 수 없습니다"
+        )
+
     return BaseResponse(
         success=True,
         message="비밀번호가 변경되었습니다"
@@ -90,8 +104,14 @@ async def change_language(
 ):
     """모국어 변경"""
     user_service = UserService(db)
-    user_service.update_user_language(current_user.user_id, language_change.level_id)
+    updated_user_language = user_service.update_user_language(current_user.user_id, language_change.level_id)
     
+    # 사용자 정보 없을 때 예외처리
+    if updated_user_language is False:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="사용자를 찾을 수 없습니다"
+        )
     return BaseResponse(
         success=True,
         message="모국어가 변경되었습니다"
@@ -106,7 +126,14 @@ async def change_job(
 ):
     """직무 변경"""
     user_service = UserService(db)
-    user_service.update_user_job(current_user.user_id, job_change.job_id)
+    updated_user_job = user_service.update_user_job(current_user.user_id, job_change.job_id)
+    
+    # 사용자 정보 없을 때 예외처리
+    if updated_user_job is False:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="사용자를 찾을 수 없습니다"
+        )
     
     return BaseResponse(
         success=True,

@@ -1,6 +1,7 @@
 """
 외부 API 서비스 관련 서비스 (TTS/STT/LLM)
 """
+
 import sys
 import os
 import argparse
@@ -22,6 +23,7 @@ from typing import Optional, Dict, Any
 import httpx
 import uuid
 from fastapi import UploadFile
+
 from requests import Session as RequestsSession
 
 from dotenv import load_dotenv
@@ -643,4 +645,3 @@ if __name__ ==  "__main__":
     except KeyboardInterrupt:
         logger.info("Program terminated by user.")
         del client
-
