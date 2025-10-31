@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     STT_API_KEY: Optional[str] = None
     LLM_API_URL: Optional[str] = None
     LLM_API_KEY: Optional[str] = None
+    # OpenAI API 설정
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: Optional[str] = None
+    OPENAI_BASE_URL: Optional[str] = None
+    OPENAI_ASSISTANT_ID: Optional[str] = None
     
 
     # Return Zero API 설정
