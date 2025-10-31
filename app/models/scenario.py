@@ -52,7 +52,7 @@ class ScenarioProgress(Base):
     __tablename__ = "scenario_progress"
     
     progress_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True)
     scenario_id = Column(Integer, ForeignKey("scenarios.scenario_id"), nullable=False)
     user_role_id = Column(Integer, ForeignKey("roles.role_id"), nullable=False)
     ai_role_id = Column(Integer, ForeignKey("roles.role_id"), nullable=False)
@@ -60,6 +60,10 @@ class ScenarioProgress(Base):
     turn_count = Column(Integer)  # 발화 횟수
     description = Column(Text)  # 상황 설명
     conversation = Column(JSON)  # 대화 내역 (JSON 형태)
+    
+    # OpenAI Assistants API 관련
+    thread_id = Column(String(255), unique=True, nullable=True, index=True)  # OpenAI thread_id
+    assistant_id = Column(String(255), nullable=True)  # OpenAI assistant_id
     
     start_time = Column(DateTime, nullable=False, default=func.now())
     end_time = Column(DateTime)
