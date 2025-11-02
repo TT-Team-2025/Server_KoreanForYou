@@ -613,6 +613,16 @@ class RTZROpenAPIClient:
         if self._stream:
             self._stream.terminate()
 
+# 임시 클래스 LLMService
+class LLMService:
+    """LLM 서비스 클라이언트 (추후 구현 예정)"""
+    def __init__(self, db: Session):
+        self.db = db
+    
+    def generate_chapter_content(self, category_id: int):
+        """카테고리 기반으로 챕터 콘텐츠 생성 (추후 구현 예정)"""
+        # LLM API 호출 로직 구현 필요
+        pass
 
 if __name__ ==  "__main__":
     parser = argparse.ArgumentParser(

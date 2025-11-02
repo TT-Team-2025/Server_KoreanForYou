@@ -7,7 +7,7 @@ from typing import Optional
 from app.models.learning import ChapterFeedback, SentenceFeedback
 from app.models.scenario import ScenarioFeedback
 from app.schemas.learning import ChapterFeedbackCreate, SentenceFeedbackCreate
-from app.services.llm_service import llm_service
+from app.services.external_service import LLMService
 from app.models.progress import SentenceProgress
 
 ## 매개변수 수정 필요 -> FeedbackCreate!
@@ -15,6 +15,7 @@ from app.models.progress import SentenceProgress
 class FeedbackService:
     def __init__(self, db: Session):
         self.db = db
+        self.llm_service = LLMService(db)
     
     def get_chapter_feedback(self, user_id: int, chapter_id: int) -> Optional[ChapterFeedback]:
         """챕터 피드백 조회"""
@@ -70,7 +71,7 @@ class FeedbackService:
         # llm 서비스 연동 필요
         summary_feedback = llm_service.generate_chapter_summary_feedback(
             weaknesses
-        )
+        ) 
         
         # fleuncy_score = sum(
         #     (int)st.start_time - (int)st.end_time

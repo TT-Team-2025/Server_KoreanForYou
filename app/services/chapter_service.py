@@ -8,12 +8,12 @@ from sqlalchemy import and_
 from app.models.learning import Chapter, Sentence, LearningCategory
 from app.schemas.learning import ChapterCreate, ChapterUpdate
 from app.models.progress import UserProgress
-from app.services.llm_service import llm_service
-
+from app.services.external_service import LLMService
 
 class ChapterService:
     def __init__(self, db: Session):
         self.db = db
+        self.llm_service = LLMService(db)
     
     def get_chapters(
         self, 

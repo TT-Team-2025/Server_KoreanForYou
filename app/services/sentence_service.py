@@ -6,11 +6,13 @@ from typing import Optional, List
 
 from app.models.learning import Sentence, SimilarSentence
 from app.schemas.learning import SentenceCreate, SentenceUpdate
+from app.services.external_service import LLMService
 
 
 class SentenceService:
     def __init__(self, db: Session):
         self.db = db
+        self.llm_service = LLMService(db)
     
     def get_sentence_by_id(self, sentence_id: int) -> Optional[Sentence]:
         """ID로 문장 조회"""
