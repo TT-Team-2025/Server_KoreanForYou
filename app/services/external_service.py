@@ -13,6 +13,10 @@ import grpc
 import logging
 import json
 import asyncio
+from dotenv import load_dotenv
+
+# .env 파일 로드 (최상단에서 한 번만 실행)
+load_dotenv()
 
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
@@ -24,7 +28,7 @@ from requests import Session as RequestsSession
 
 from dotenv import load_dotenv
 
-# .env 파일 로드 (최상단에서 한 번만 실행)
+# .env 파일 로드
 load_dotenv()
 
 from pydub import AudioSegment 
@@ -53,20 +57,21 @@ _stream_instance = None
 API_BASE = "https://openapi.vito.ai"
 GRPC_SERVER_URL = "grpc-openapi.vito.ai:443"
 
-# 환경 변수 읽기 (load_dotenv()는 모듈 최상단에서 이미 호출됨)
+# 환경 변수 읽기 (os.environ에서 가져오기)
 CLIENT_ID = os.environ.get("RETURN_ZERO_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("RETURN_ZERO_CLIENT_SECRET")
+CLOVA_VOICE_CLIENT_ID = os.environ.get("CLOVA_VOICE_CLIENT_ID")
+CLOVA_VOICE_CLIENT_SECRET = os.environ.get("CLOVA_VOICE_CLIENT_SECRET")
 
-print(f"🔍 [DEBUG] 환경 변수 로드 시도:")
-print(f"🔍 [DEBUG] CLIENT_ID: {CLIENT_ID}")
-print(f"🔍 [DEBUG] CLIENT_SECRET: {'*' * len(CLIENT_SECRET) if CLIENT_SECRET else 'None'}")
-print(f"🔍 [DEBUG] 환경 변수 존재 여부: RETURN_ZERO_CLIENT_ID={CLIENT_ID is not None}, RETURN_ZERO_CLIENT_SECRET={CLIENT_SECRET is not None}")
+# 로거 설정
+logger = logging.getLogger(__name__)
 
-# 환경 변수가 설정되지 않은 경우 경고만 출력하고 기본값 사용
+logger.debug("환경 변수 로드 시도")
+# 환경 변수가 설정되지 않은 경우 경고 출력 및 기본값 설정
 if not CLIENT_ID or not CLIENT_SECRET:
-    print("❌ Warning: RETURN_ZERO_CLIENT_ID and RETURN_ZERO_CLIENT_SECRET not set. Using default values.")
-    CLIENT_ID = CLIENT_ID or "default_client_id"
-    CLIENT_SECRET = CLIENT_SECRET or "default_client_secret"
+    logger.warning("RETURN_ZERO_CLIENT_ID and RETURN_ZERO_CLIENT_SECRET not set. STT기능을 사용할 수 없습니다.")
+if not CLOVA_VOICE_CLIENT_ID or not CLOVA_VOICE_CLIENT_SECRET:
+    logger.warning("CLOVA_VOICE_CLIENT_ID and CLOVA_VOICE_CLIENT_SECRET not set. TTS 기능을 사용할 수 없습니다.")
 
 class ExternalService:
     def __init__(self, db: Session):
@@ -75,12 +80,15 @@ class ExternalService:
            CLIENT_ID , 
             CLIENT_SECRET
         )
+        self.clova_voice_client = ClovaVoiceTTSClient(
+            CLOVA_VOICE_CLIENT_ID,
+            CLOVA_VOICE_CLIENT_SECRET
+        )
 
     ##### 이 함수는 음성파일을 인자로 받아 stt 작업 수행하고 결과를 반환하는 함수 #####
     async def transcribe_file(self, file: UploadFile, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         파일 업로드 STT 처리
-        
         Args:
             file: 업로드된 음성 파일
             config: STT 설정 옵션
@@ -107,19 +115,89 @@ class ExternalService:
             with open(file_path, "wb") as f:
                 content = await file.read()
                 f.write(content)
-            
             # RTZR API 호출
             result = await asyncio.to_thread(
                 self.rtzr_client.transcribe_file,
                 file_path,
                 config
             )
-            
             return result
         finally:
             # 임시 파일 삭제
             if os.path.exists(file_path):
                 os.remove(file_path)
+
+    ##### TTS (Text-to-Speech) 관련 메서드들 #####
+    async def text_to_speech(
+        self, 
+        text: str, 
+        speaker: str = "nara", 
+        speed: int = 0, 
+        volume: int = 0,
+        pitch: int = 0,
+        emotion: str = "neutral",
+        format: str = "mp3"
+    ) -> bytes:
+        """
+        텍스트를 음성으로 변환
+        Args:
+            text: 변환할 텍스트
+            speaker: 음성 종류 (nara, jinho, miju 등)
+            speed: 음성 속도 (-5 ~ 5)
+            volume: 음성 볼륨 (-5 ~ 5)
+            pitch: 음성 피치 (-5 ~ 5)
+            emotion: 감정 (neutral, happy, sad, angry, fearful, surprised, disgusted)
+            format: 출력 형식 (mp3, wav)
+        Returns:
+            음성 파일 바이트 데이터
+        """
+        return await asyncio.to_thread(
+            self.clova_voice_client.text_to_speech,
+            text=text,
+            speaker=speaker,
+            speed=speed,
+            volume=volume,
+            pitch=pitch,
+            emotion=emotion,
+            format=format
+        )
+    
+    async def text_to_speech_file(
+        self, 
+        text: str, 
+        output_path: str,
+        speaker: str = "nara", 
+        speed: int = 0, 
+        volume: int = 0,
+        pitch: int = 0,
+        emotion: str = "neutral",
+        format: str = "mp3"
+    ) -> str:
+        """
+        텍스트를 음성 파일로 변환하여 저장
+        Args:
+            text: 변환할 텍스트
+            output_path: 저장할 파일 경로
+            speaker: 음성 종류
+            speed: 음성 속도 (-5 ~ 5)
+            volume: 음성 볼륨 (-5 ~ 5)
+            pitch: 음성 피치 (-5 ~ 5)
+            emotion: 감정
+            format: 출력 형식 (mp3, wav)
+        Returns:
+            저장된 파일 경로
+        """
+        return await asyncio.to_thread(
+            self.clova_voice_client.text_to_speech_file,
+            text=text,
+            output_path=output_path,
+            speaker=speaker,
+            speed=speed,
+            volume=volume,
+            pitch=pitch,
+            emotion=emotion,
+            format=format
+        )
 
 '''1. 마이크 입력 → 오디오 데이터
 2. 오디오 데이터 → gRPC 채널 → 리턴제로 서버
@@ -149,7 +227,6 @@ def _check_microphone_available():
     except Exception as e:
         print(f"마이크 확인 중 오류: {e}")
         return False
-
 
 class MicrophoneStream:
     #Recording Stream을 생성하고 오디오 청크를 생성하는 제너레이터를 반환하는 클래스.
@@ -236,6 +313,142 @@ class MicrophoneStream:
             yield b"".join(data)  # 오디오 데이터 반환
 
 
+class ClovaVoiceTTSClient:
+    """CLOVA VOICE TTS 클라이언트"""
+    def __init__(self, client_id: str, client_secret: str):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.api_url = "https://naveropenapi.apigw.ntruss.com/tts-premium/v1/tts"
+        self._sess = RequestsSession()
+    
+    def _get_headers(self) -> Dict[str, str]:
+        """인증 헤더 반환"""
+        return {
+            "X-NCP-APIGW-API-KEY-ID": self.client_id,
+            "X-NCP-APIGW-API-KEY": self.client_secret,
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+    
+    def text_to_speech(
+        self, 
+        text: str, 
+        speaker: str = "nara", 
+        speed: int = 0, 
+        volume: int = 0,
+        pitch: int = 0,
+        emotion: str = "neutral",
+        format: str = "mp3"
+    ) -> bytes:
+        """
+        텍스트를 음성으로 변환
+        
+        Args:
+            text: 변환할 텍스트
+            speaker: 음성 종류 (nara, jinho, miju, nhajun, ndain, nmeimei, njinho, njiyun, njihun, njinseok, nseongjin, ntaeho, nyoungmi, nyoungjin, nyoungsook, nyoungsun, nyoungwoo, nyoungyoon, nyoungzoo, nyoungzoo2, nyoungzoo3, nyoungzoo4, nyoungzoo5, nyoungzoo6, nyoungzoo7, nyoungzoo8, nyoungzoo9, nyoungzoo10)
+            speed: 음성 속도 (-5 ~ 5)
+            volume: 음성 볼륨 (-5 ~ 5)
+            pitch: 음성 피치 (-5 ~ 5)
+            emotion: 감정 (neutral, happy, sad, angry, fearful, surprised, disgusted)
+            format: 출력 형식 (mp3, wav)
+            
+        Returns:
+            음성 파일 바이트 데이터
+        """
+        if self.client_id == "NONE" or self.client_secret == "NONE":
+            raise ValueError("CLOVA VOICE API 키가 설정되지 않았습니다.")
+        
+        # speaker 파라미터 검증
+        if not speaker or speaker.strip() == "":
+            raise ValueError("speaker 파라미터가 필요합니다.")
+        
+        # CLOVA VOICE TTS API는 form-encoded 형식으로 요청 (speaker가 맨 앞, text가 맨 뒤)
+        data = {
+            "speaker": speaker,
+            "volume": volume,
+            "speed": speed,
+            "pitch": pitch,
+            "format": format,
+            "text": text
+        }
+        
+        # emotion 파라미터는 지원되는 경우에만 추가
+        if emotion and emotion != "neutral":
+            data["emotion"] = emotion
+        
+        headers = self._get_headers()
+        
+        try:
+            logger.debug(f"TTS 요청 URL: {self.api_url}")
+            logger.debug(f"TTS 요청 헤더: {headers}")
+            logger.debug(f"TTS 요청 데이터: {data}")
+            
+            response = self._sess.post(
+                self.api_url,
+                headers=headers,
+                data=data
+            )
+            
+            logger.debug(f"TTS 응답 상태 코드: {response.status_code}")
+            logger.debug(f"TTS 응답 헤더: {dict(response.headers)}")
+            
+            if response.status_code != 200:
+                logger.error(f"TTS API 오류 응답: {response.text}")
+            
+            response.raise_for_status()
+            return response.content
+            
+        except Exception as e:
+            logger.error(f"CLOVA VOICE TTS 오류: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"오류 응답 내용: {e.response.text}")
+            raise
+    
+    def text_to_speech_file(
+        self, 
+        text: str, 
+        output_path: str,
+        speaker: str = "nara", 
+        speed: int = 0, 
+        volume: int = 0,
+        pitch: int = 0,
+        emotion: str = "neutral",
+        format: str = "mp3"
+    ) -> str:
+        """
+        텍스트를 음성 파일로 변환하여 저장
+        
+        Args:
+            text: 변환할 텍스트
+            output_path: 저장할 파일 경로
+            speaker: 음성 종류
+            speed: 음성 속도 (-5 ~ 5)
+            volume: 음성 볼륨 (-5 ~ 5)
+            pitch: 음성 피치 (-5 ~ 5)
+            emotion: 감정
+            format: 출력 형식 (mp3, wav)
+            
+        Returns:
+            저장된 파일 경로
+        """
+        audio_data = self.text_to_speech(
+            text=text,
+            speaker=speaker,
+            speed=speed,
+            volume=volume,
+            pitch=pitch,
+            emotion=emotion,
+            format=format
+        )
+        
+        # 디렉토리가 없으면 생성
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        with open(output_path, "wb") as f:
+            f.write(audio_data)
+        
+        return output_path
+
+
 class RTZROpenAPIClient:
     def __init__(self, client_id, client_secret):
         super().__init__()
@@ -248,40 +461,40 @@ class RTZROpenAPIClient:
 
     @property #함수를 속성처럼
     def token(self):#api사용을 위한 토큰 발급 함수 token 만료기간 6시간
-        print(f"🔍 [DEBUG] self._token 상태: {self._token}")
+        logger.debug(f"self._token 상태: {self._token}")
         
         if self._token is None:
-            print(f"🔍 [DEBUG] _token이 None입니다. 새로 발급받습니다.")
+            logger.debug("_token이 None입니다. 새로 발급받습니다.")
         elif self._token["expire_at"] < time.time():
-            print(f"🔍 [DEBUG] 토큰 만료됨. 만료 시간: {self._token['expire_at']}, 현재 시간: {time.time()}")
+            logger.debug(f"토큰 만료됨. 만료 시간: {self._token['expire_at']}, 현재 시간: {time.time()}")
         
         if self._token is None or self._token["expire_at"] < time.time():
-            print(f"🔑 API 인증 시도 중...")
-            print(f"🔍 [DEBUG] client_id: {self.client_id}")
-            print(f"🔍 [DEBUG] client_secret: {'*' * len(self.client_secret)} (길이: {len(self.client_secret)})")
-            print(f"API URL: {API_BASE}/v1/authenticate")
+            logger.info("API 인증 시도 중...")
+            logger.debug(f"client_id: {self.client_id}")
+            logger.debug(f"client_secret: {'*' * len(self.client_secret)} (길이: {len(self.client_secret)})")
+            logger.debug(f"API URL: {API_BASE}/v1/authenticate")
             
             try:
                 resp = self._sess.post(
                     API_BASE + "/v1/authenticate",
                     data={"client_id": self.client_id, "client_secret": self.client_secret},
                 )
-                print(f"🔍 [DEBUG] 응답 상태 코드: {resp.status_code}")
-                print(f"🔍 [DEBUG] 응답 헤더: {dict(resp.headers)}")
-                print(f"🔍 [DEBUG] 응답 본문: {resp.text}")
+                logger.debug(f"응답 상태 코드: {resp.status_code}")
+                logger.debug(f"응답 헤더: {dict(resp.headers)}")
+                logger.debug(f"응답 본문: {resp.text}")
                 
                 resp.raise_for_status()
                 self._token = resp.json()
-                print(f"🔍 [DEBUG] 발급받은 토큰: {self._token}")
-                print(f"✅ 토큰 발급 성공!")
-                print(f"토큰 만료 시간: {self._token.get('expire_at', 'N/A')}")
+                logger.debug(f"발급받은 토큰: {self._token}")
+                logger.info("토큰 발급 성공!")
+                logger.info(f"토큰 만료 시간: {self._token.get('expire_at', 'N/A')}")
                 
             except Exception as e:
-                print(f"❌ API 인증 오류: {e}")
-                print(f"응답 내용: {resp.text if 'resp' in locals() else 'N/A'}")
+                logger.error(f"API 인증 오류: {e}")
+                logger.error(f"응답 내용: {resp.text if 'resp' in locals() else 'N/A'}")
                 raise  # 에러를 다시 발생시켜 디버깅 가능하게
         
-        print(f"🔍 [DEBUG] 반환할 토큰: {self._token.get('access_token', 'None')[:50]}...")
+        logger.debug(f"반환할 토큰: {self._token.get('access_token', 'None')[:50]}...")
         return self._token["access_token"]
     
     def _auth_headers(self) -> Dict[str, str]:
@@ -289,20 +502,20 @@ class RTZROpenAPIClient:
         return {"Authorization": f"Bearer {self.token}"}
 
     def transcribe_streaming_grpc(self, config):
-        print(f" STT 시작...")
-        print(f"gRPC 서버: {GRPC_SERVER_URL}")
+        logger.info("STT 시작...")
+        logger.debug(f"gRPC 서버: {GRPC_SERVER_URL}")
         
         # 스트림 초기화
         self._stream = MicrophoneStream(SAMPLE_RATE, CHUNK, CHANNELS, FORMAT)
         
         base = GRPC_SERVER_URL
         with grpc.secure_channel(base, credentials=grpc.ssl_channel_credentials()) as channel: #with 문법 -> file 열때 열린 파일을 자동으로 닫아줌, 서버 연결 부분
-            print(f"🔗 gRPC 채널 연결 성공!")
+            logger.info("gRPC 채널 연결 성공!")
             stub = pb_grpc.OnlineDecoderStub(channel) # STT 서비스 스텁
-            print(f"📡 STT 서비스 스텁 생성 완료!")
+            logger.info("STT 서비스 스텁 생성 완료!")
             
             cred = grpc.access_token_call_credentials(self.token)  #인증 토큰
-            print(f"🔐 인증 토큰 설정 완료!") 
+            logger.info("인증 토큰 설정 완료!") 
 
             audio_generator = self._stream.generator() # 마이크에서 오디오 데이터
 
@@ -408,11 +621,11 @@ if __name__ ==  "__main__":
     load_dotenv()
 
     client_id = os.getenv("RETURN_ZERO_CLIENT_ID")
-    print(CLIENT_ID)
+    logger.debug(f"CLIENT_ID: {CLIENT_ID}")
     client_secret = os.getenv("RETURN_ZERO_CLIENT_SECRET")
 
     if not client_id or not client_secret:
-        print("환경변수 RETURN_ZERO_CLIENT_ID, RETURN_ZERO_CLIENT_SECRET를 설정해주세요.")
+        logger.error("환경변수 RETURN_ZERO_CLIENT_ID, RETURN_ZERO_CLIENT_SECRET를 설정해주세요.")
         exit(1)
     
 
@@ -427,8 +640,8 @@ if __name__ ==  "__main__":
 
     client = RTZROpenAPIClient(client_id, client_secret)
     try:
-        print("실시간 STT를 시작합니다. Ctrl+C로 종료하세요.")
+        logger.info("실시간 STT를 시작합니다. Ctrl+C로 종료하세요.")
         client.transcribe_streaming_grpc(config)
     except KeyboardInterrupt:
-        print("Program terminated by user.")
+        logger.info("Program terminated by user.")
         del client

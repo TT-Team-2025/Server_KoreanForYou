@@ -1,7 +1,6 @@
 """
 문장 관련 API 엔드포인트
 """
-from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List

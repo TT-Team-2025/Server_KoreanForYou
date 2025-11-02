@@ -3,9 +3,12 @@
 """
 import os
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
+from pydantic import BaseModel
+import io
 
 from app.core.database import get_db
 from app.core.security import oauth2_scheme
@@ -13,6 +16,123 @@ from app.schemas.common import BaseResponse
 from app.services.external_service import ExternalService
 
 router = APIRouter()
+
+
+class TTSRequest(BaseModel):
+    """TTS 요청 스키마"""
+    text: str
+    speaker: str = "nara"
+    speed: int = 0
+    volume: int = 0
+    pitch: int = 0
+    emotion: str = "neutral"
+    format: str = "mp3"
+
+
+@router.post("/tts")
+async def text_to_speech(
+    request: TTSRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    텍스트를 음성으로 변환 (바이트 데이터 반환)
+    
+    텍스트를 받아서 CLOVA VOICE API를 통해 음성으로 변환합니다.
+    """
+    external_service = ExternalService(db)
+    
+    try:
+        audio_data = await external_service.text_to_speech(
+            text=request.text,
+            speaker=request.speaker,
+            speed=request.speed,
+            volume=request.volume,
+            pitch=request.pitch,
+            emotion=request.emotion,
+            format=request.format
+        )
+        
+        # 바이트 데이터를 스트리밍 응답으로 반환
+        audio_stream = io.BytesIO(audio_data)
+        
+        return StreamingResponse(
+            io.BytesIO(audio_data),
+            media_type=f"audio/{request.format}",
+            headers={
+                "Content-Disposition": f"attachment; filename=tts_output.{request.format}"
+            }
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TTS 처리 중 오류: {str(e)}"
+        )
+
+
+@router.post("/tts/file")
+async def text_to_speech_file(
+    text: str = Form(...),
+    speaker: str = Form("nara"),
+    speed: int = Form(0),
+    volume: int = Form(0),
+    pitch: int = Form(0),
+    emotion: str = Form("neutral"),
+    format: str = Form("mp3"),
+    db: Session = Depends(get_db)
+):
+    """
+    텍스트를 음성 파일로 변환하여 저장
+    
+    텍스트를 받아서 CLOVA VOICE API를 통해 음성 파일로 변환하고 서버에 저장합니다.
+    """
+    external_service = ExternalService(db)
+    
+    try:
+        # 파일명 생성 (타임스탬프 포함)
+        import time
+        timestamp = int(time.time())
+        filename = f"tts_{timestamp}.{format}"
+        output_path = os.path.join("uploads", "tts", filename)
+        
+        file_path = await external_service.text_to_speech_file(
+            text=text,
+            output_path=output_path,
+            speaker=speaker,
+            speed=speed,
+            volume=volume,
+            pitch=pitch,
+            emotion=emotion,
+            format=format
+        )
+        
+        return BaseResponse(
+            success=True,
+            message="음성 파일이 생성되었습니다.",
+            data={
+                "file_path": file_path,
+                "filename": filename,
+                "text": text,
+                "speaker": speaker,
+                "format": format
+            }
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TTS 파일 생성 중 오류: {str(e)}"
+        )
 
 
 @router.post("/stt/file") ## file 형식의 음성파일을 인자로 받아 stt 작업 수행하고 결과를 반환하는 함수 #####

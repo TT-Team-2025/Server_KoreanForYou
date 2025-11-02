@@ -114,10 +114,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-<<<<<<< HEAD
-=======
-K4U/ 
->>>>>>> cb533023fc32b10649b776c1c68cc74de88210ab
+K4U/
 
 # Spyder project settings
 .spyderproject
