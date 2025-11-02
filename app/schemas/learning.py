@@ -124,6 +124,7 @@ class SentenceListResponse(BaseModel):
 class SimilarSentenceBase(BaseModel):
     sentence_id: int
     content: str
+    count: int = 2  # 몇 개의 유사 문장을 생성할 지
     translated_content: Optional[str] = None
     similarity_type: str  # 동의어, 유사표현, 난이도조정, 상황변형
 
@@ -172,7 +173,7 @@ class SentenceFeedbackBase(BaseModel):
     user_id: int
     sentence_id: int
     sentence_progress_id: int
-    weaknesses: Optional[List[str]] = None
+    # weaknesses: Optional[List[str]] = None
 
 
 class SentenceFeedbackCreate(SentenceFeedbackBase):

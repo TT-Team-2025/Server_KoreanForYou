@@ -100,4 +100,7 @@ async def get_similar_sentences(
         )
     
     similar_sentences = sentence_service.get_similar_sentences(sentence_id)
+    
+    if not similar_sentences:
+        similar_sentences = sentence_service.create_similar_sentence(sentence_id)
     return similar_sentences

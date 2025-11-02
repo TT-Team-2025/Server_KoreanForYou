@@ -17,6 +17,9 @@ from app.services.feedback_service import FeedbackService
 router = APIRouter()
 
 
+# 피드백 저장 -> 피드백 생성 로직으로 구현 필요!
+# 매개변수, 내부 로직, db 연동, 서비스 로직 수정 필요
+
 @router.get("/chapters/{chapter_id}", response_model=ChapterFeedbackResponse)
 async def get_chapter_feedback(
     chapter_id: int,
@@ -37,24 +40,26 @@ async def get_chapter_feedback(
     
     return feedback
 
-
-@router.post("/chapters/{chapter_id}", response_model=BaseResponse)
-async def save_chapter_feedback(
+## 챕터 피드백 생성 구현 필요
+@router.post("/chapters/{chapter_id}", response_model=ChapterFeedbackResponse)
+async def generate_chapter_feedback(
     chapter_id: int,
-    feedback_data: ChapterFeedbackCreate,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
-    """챕터 피드백 저장"""
+    """챕터 피드백 생성"""
     user_id = get_current_user_id(token)
     feedback_service = FeedbackService(db)
     
-    feedback_service.save_chapter_feedback(user_id, chapter_id, feedback_data)
+    feedback = feedback_service.generate_chapter_feedback(user_id, chapter_id)
     
-    return BaseResponse(
-        success=True,
-        message="챕터 피드백이 저장되었습니다"
-    )
+    if not feedback:
+        raise HTTPException(
+            status_code=status.HTTP_404_BAD_REQUEST,
+            detail="챕터 피드백 생성에 실패했습니다"
+        )
+    
+    return feedback
 
 
 @router.get("/sentences/{sentence_id}", response_model=SentenceFeedbackResponse)
@@ -77,24 +82,27 @@ async def get_sentence_feedback(
     
     return feedback
 
-
+## 저장 -> 생성 로직 필요
 @router.post("/sentences/{sentence_id}", response_model=BaseResponse)
-async def save_sentence_feedback(
+async def generate_sentence_feedback(
     sentence_id: int,
     feedback_data: SentenceFeedbackCreate,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
-    """문장 피드백 저장"""
+    """문장 피드백 생성"""
     user_id = get_current_user_id(token)
     feedback_service = FeedbackService(db)
     
-    feedback_service.save_sentence_feedback(user_id, sentence_id, feedback_data)
+    feedback = feedback_service.generate_sentence_feedback(user_id, sentence_id, feedback_data)
     
-    return BaseResponse(
-        success=True,
-        message="문장 피드백이 저장되었습니다"
-    )
+    if not feedback:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="문장 피드백 생성에 실패했습니다"
+        )
+    
+    return feedback
 
 
 @router.get("/scenarios/{scenario_id}", response_model=ScenarioFeedbackResponse)
