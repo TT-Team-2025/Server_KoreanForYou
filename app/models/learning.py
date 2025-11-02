@@ -88,7 +88,7 @@ class ChapterFeedback(Base):
     total_score = Column(Integer)  # 0-100
     pronunciation_score = Column(Integer)  # 0-100
     accuracy_score = Column(Integer)  # 0-100
-    completion_time = Column(Integer)  # 완료 소요 시간 (분)
+    completion_time = Column(DateTime)  # 완료 소요 시간 (분)
     
     # 문장별 성취도
     total_sentences = Column(Integer, nullable=False)

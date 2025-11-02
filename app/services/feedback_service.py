@@ -7,6 +7,8 @@ from typing import Optional
 from app.models.learning import ChapterFeedback, SentenceFeedback
 from app.models.scenario import ScenarioFeedback
 from app.schemas.learning import ChapterFeedbackCreate, SentenceFeedbackCreate
+from app.services.llm_service import llm_service
+from app.models.progress import SentenceProgress
 
 ## 매개변수 수정 필요 -> FeedbackCreate!
 
@@ -20,8 +22,8 @@ class FeedbackService:
             ChapterFeedback.user_id == user_id,
             ChapterFeedback.chapter_id == chapter_id
         ).first()
-    
-    ## 생성 로직
+
+
     def generarte_chapter_feedback(
         self, 
         user_id: int, 
@@ -41,20 +43,53 @@ class FeedbackService:
         sentence_ids = [fb.sentencd_id for fb in sentence_feedbacks]
         
         # 문장 진행사항 조회
-        sentences_progresses = self.db.query(SentenceProgressBase).filter(
-            SentenceProgessBase.sentence_id.in_(sentence_ids),
-            SentenceProgressBase.user_id == user_id
+        sentences_progresses = self.db.query(SentenceProgress).filter(
+            SentenceProgress.sentence_id.in_(sentence_ids),
+            SentenceProgress.user_id == user_id
         ).all()
         
         ## 종합 평가, 문장별 성취도, ai 종합 피드백, 시간 기록
         
-        pronunciation_scores = (correct_word_count / total_word_count) * 100
+        pronunciation_score = sum(
+            st.correct_word_count / st.total_word_count * 100
+            for st in sentences_progresses 
+            if st.total_word_count and st.correct_word_count
+        )
+        
+        accuracy_score = sum(
+            st.recognized_word_count / st.total_word_count * 100
+            for st in sentences_progresses 
+            if st.total_word_count and st.recognized_word_count
+        )
+        
+        weaknesses = self.db.query(SentenceFeedback.weaknesses).filter(
+            SentenceFeedback.user_id == user_id,
+            SentenceFeedback.sentence.chapter_id == chapter_id
+        ).all()
+        
+        # llm 서비스 연동 필요
+        summary_feedback = llm_service.generate_chapter_summary_feedback(
+            weaknesses
+        )
+        
+        # fleuncy_score = sum(
+        #     (int)st.start_time - (int)st.end_time
+        #     for st in sentences_progresses
+        #     if st.start_time and st.end_time
+        # )        
         
         # 생성
         feedback = ChapterFeedback(
             user_id=user_id,
             chapter_id=chapter_id,
-            **feedback_data.dict()
+            
+            total_score=(pronunciation_score + accuracy_score) // 2,
+            pronunciation_score=pronunciation_score,
+            accuracy_score=accuracy_score,
+            summary_feedback=summary_feedback,
+            weaknesses=[w for sublist in weaknesses for w in sublist],
+            completion_time=sentences_progresses[-1].end_time,
+            total_time=(sentences_progresses[0].start_time - sentences_progresses[-1].end_tim).total_seconds() / 60,
         )
         self.db.add(feedback)
         
@@ -70,12 +105,12 @@ class FeedbackService:
             SentenceFeedback.sentence_id == sentence_id
         ).first()
     
-    ## 피드백 생성 로직 필요
+
     def generate_sentence_feedback(
         self, 
         user_id: int, 
         sentence_id: int, 
-        feedback_data: SentenceFeedbackCreate
+        sentence_progress_id: int
     ) -> SentenceFeedback:
         """문장 피드백 생성"""
 
@@ -83,7 +118,7 @@ class FeedbackService:
         feedback = SentenceFeedback(
             user_id=user_id,
             sentence_id=sentence_id,
-            **feedback_data.dict()
+            sentence_progress_id=sentence_progress_id
         )
         self.db.add(feedback)
         

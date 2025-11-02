@@ -7,6 +7,8 @@ from sqlalchemy import and_
 
 from app.models.learning import Chapter, Sentence, LearningCategory
 from app.schemas.learning import ChapterCreate, ChapterUpdate
+from app.models.progress import UserProgress
+from app.services.llm_service import llm_service
 
 
 class ChapterService:
@@ -15,6 +17,7 @@ class ChapterService:
     
     def get_chapters(
         self, 
+        user_id: int,
         job_id: Optional[int] = None, 
         level_id: Optional[int] = None,
         page: int = 1, 
