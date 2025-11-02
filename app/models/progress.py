@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
 
-
+# User Progress 보다는 Chapter Progress가 더 적합한 네이밍일수도?
 class UserProgress(Base):
     """사용자 진행 상황 테이블"""
     __tablename__ = "user_progress"

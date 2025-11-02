@@ -23,6 +23,7 @@ async def get_chapters(
     level_id: Optional[int] = Query(None, description="레벨 ID"),
     page: int = Query(1, ge=1, description="페이지 번호"),
     size: int = Query(20, ge=1, le=100, description="페이지 크기"),
+    group: Optional[str] = Query(all, description="완료 여부 필터링"),
     db: Session = Depends(get_db)
 ):
     """직무·레벨 기반 챕터 목록 조회"""
@@ -31,14 +32,16 @@ async def get_chapters(
         job_id=job_id,
         level_id=level_id,
         page=page,
-        size=size
+        size=size,
+        group=group
     )
     
     return ChapterListResponse(
         chapters=chapters,
         total=total,
         page=page,
-        size=size
+        size=size,
+        group=group
     )
 
 
@@ -60,6 +63,7 @@ async def get_chapter(
     return chapter
 
 
+# 새 챕터 생성은 LLM 서비스 연동 및 스키마 재검토 필요 -> 세부 내용을 조정하는 층(챕터 제목, 레벨 등) 논의 필요
 @router.post("/", response_model=BaseResponse)
 async def create_chapter(
     chapter_data: ChapterCreate,
@@ -78,6 +82,7 @@ async def create_chapter(
     )
 
 
+# 추후 디벨롭 필요
 @router.put("/{chapter_id}", response_model=BaseResponse)
 async def update_chapter(
     chapter_id: int,
@@ -103,6 +108,7 @@ async def update_chapter(
     )
 
 
+# 추후 디벨롭 필요
 @router.delete("/{chapter_id}", response_model=BaseResponse)
 async def delete_chapter(
     chapter_id: int,

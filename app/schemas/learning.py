@@ -72,6 +72,7 @@ class ChapterListResponse(BaseModel):
     total: int
     page: int
     size: int
+    group: str # 완료 or 완료 x or 전체 불러오기 구분
 
 
 # 문장 관련

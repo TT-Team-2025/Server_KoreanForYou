@@ -18,16 +18,37 @@ class ChapterService:
         job_id: Optional[int] = None, 
         level_id: Optional[int] = None,
         page: int = 1, 
-        size: int = 20
+        size: int = 10,
+        group: Optional[bool] = all,
     ) -> Tuple[List[Chapter], int]:
+        
+        # 완료한 챕터 목록
+        completed_chapters = self.db.query(UserProgress.chapter_id).filter(
+            UserProgress.user_id == user_id,
+            UserProgress.completion_rate == 100
+        ).subquery()
+        
         """챕터 목록 조회"""
-        query = self.db.query(Chapter).filter(Chapter.is_active == True)
-        
-        if job_id is not None:
-            query = query.filter(Chapter.job_id == job_id)
-        
-        if level_id is not None:
-            query = query.filter(Chapter.level_id == level_id)
+        # 전체 조회
+        coquery = []
+        if group == "all":
+            coquery = self.db.query(Chapter).filter(
+                Chapter.is_active == True,
+                Chapter.job_id == job_id if job_id is not None else True,
+                Chapter.level_id == level_id if level_id is not None else True
+            )
+        # 완료하지 않은 챕터만
+        elif group == "not_completed":
+            coquery = self.db.query(Chapter).filter(
+                    Chapter.is_active == True,                
+                    Chapter.job_id == job_id if job_id is not None else True,
+                    Chapter.level_id == level_id if level_id is not None else True,
+                    ~Chapter.chapter_id.in_(completed_chapters)
+            )
+        # 완료된 챕터만
+        elif group == "completed":
+            coquery = completed_chapters
+        query = coquery
         
         total = query.count()
         chapters = query.offset((page - 1) * size).limit(size).all()
@@ -40,7 +61,12 @@ class ChapterService:
     
     def create_chapter(self, chapter_data: ChapterCreate) -> Chapter:
         """챕터 생성"""
-        chapter = Chapter(**chapter_data.dict())
+        
+        # 카테고리 기반으로 조회해야함
+        # LLM 서비스 구현 확인 후 재검토 
+        chapter = llm_service.generate_chapter_content(
+            category_id=chapter_data.category_id
+        )
         
         self.db.add(chapter)
         self.db.commit()
@@ -48,6 +74,7 @@ class ChapterService:
         
         return chapter
     
+    # 추후 디벨롭 필요
     def update_chapter(self, chapter_id: int, chapter_update: ChapterUpdate) -> Optional[Chapter]:
         """챕터 수정"""
         chapter = self.get_chapter_by_id(chapter_id)
@@ -63,6 +90,7 @@ class ChapterService:
         
         return chapter
     
+    # 추후 디벨롭 필요
     def delete_chapter(self, chapter_id: int) -> bool:
         """챕터 삭제 (소프트 삭제)"""
         chapter = self.get_chapter_by_id(chapter_id)
@@ -74,6 +102,7 @@ class ChapterService:
         
         return True
     
+
     def get_chapter_sentences(
         self, 
         chapter_id: int, 
