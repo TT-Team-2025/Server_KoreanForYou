@@ -72,8 +72,8 @@ class ScenarioProgress(Base):
     # 관계 설정
     user = relationship("User", back_populates="scenario_progress")
     scenario = relationship("Scenario", back_populates="scenario_progress")
-    user_role = relationship("Role", foreign_keys=[user_role_id])
-    ai_role = relationship("Role", foreign_keys=[ai_role_id])
+    user_role = relationship("Role", foreign_keys=[user_role_id], overlaps="user_scenario_progress")
+    ai_role = relationship("Role", foreign_keys=[ai_role_id], overlaps="ai_scenario_progress")
     scenario_feedback = relationship("ScenarioFeedback", back_populates="scenario_progress")
 
 
