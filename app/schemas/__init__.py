@@ -5,5 +5,5 @@ from .user import *
 from .community import *
 from .learning import *
 from .progress import *
-from .scenario import *
+from .scenario_dto import *
 from .common import *

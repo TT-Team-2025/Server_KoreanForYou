@@ -3,7 +3,7 @@ API v1 라우터 통합
 """
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, users, chapters, sentences, progress, scenarios, community, external, feedback, stats
+from app.api.v1.endpoints import auth, users, chapters, sentences, progress, scenario_controller, community, external, feedback, stats
 
 api_router = APIRouter()
 
@@ -21,7 +21,7 @@ api_router.include_router(sentences.router, prefix="/sentences", tags=["문장"]
 api_router.include_router(progress.router, prefix="/progress", tags=["학습진행"])
 
 # 시나리오 관련
-api_router.include_router(scenarios.router, prefix="/scenarios", tags=["시나리오"])
+api_router.include_router(scenario_controller.router, prefix="/scenarios", tags=["시나리오"])
 
 # 커뮤니티 관련
 api_router.include_router(community.router, prefix="/posts", tags=["커뮤니티"])
