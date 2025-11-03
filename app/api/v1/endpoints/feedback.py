@@ -10,7 +10,7 @@ from app.schemas.learning import (
     ChapterFeedbackResponse, ChapterFeedbackCreate,
     SentenceFeedbackResponse, SentenceFeedbackCreate
 )
-from app.schemas.scenario import ScenarioFeedbackResponse
+from app.schemas.scenario_dto import ScenarioFeedbackResponse
 from app.schemas.common import BaseResponse
 from app.services.feedback_service import FeedbackService
 
