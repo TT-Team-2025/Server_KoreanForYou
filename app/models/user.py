@@ -40,7 +40,7 @@ class Job(Base):
     """직무 테이블"""
     __tablename__ = "jobs"
     
-    job_id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     job_name = Column(String(100), nullable=False, index=True)
     description = Column(Text)
     created_at = Column(DateTime, default=func.now())

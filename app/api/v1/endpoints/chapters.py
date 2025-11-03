@@ -29,6 +29,7 @@ async def get_chapters(
     """직무·레벨 기반 챕터 목록 조회"""
     chapter_service = ChapterService(db)
     chapters, total = chapter_service.get_chapters(
+        user_id=get_current_user_id,
         job_id=job_id,
         level_id=level_id,
         page=page,

@@ -16,6 +16,27 @@ from app.services.user_service import UserService
 
 router = APIRouter()
 
+@router.post("/jobs/create", response_model=BaseResponse)
+def generate_job(
+    db: Session = Depends(get_db),
+    job_name: str = "기본 직무",
+    description: Optional[str] = None
+):
+    """직무 생성 헬퍼 함수"""
+    user_service = UserService(db)
+    job = user_service.create_job(job_name, description)
+    return job
+
+@router.post("/levels/create", response_model=BaseResponse )
+def generate_level(
+    db: Session = Depends(get_db),
+    level_name: str = "초급",
+    description: Optional[str] = None
+):
+    """레벨 생성 헬퍼 함수"""
+    user_service = UserService(db)
+    level = user_service.create_level(level_name, description)
+    return level
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),

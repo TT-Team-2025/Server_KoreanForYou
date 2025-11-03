@@ -143,3 +143,27 @@ class UserService:
     def get_all_levels(self) -> List[UserLevel]:
         """모든 레벨 조회"""
         return self.db.query(UserLevel).all()
+    
+    def create_job(self, job_name: str, description: Optional[str] = None) -> Job:
+        """직무 생성"""
+        job = Job(
+            job_name=job_name,
+            description=description
+        )
+        self.db.add(job)
+        self.db.commit()
+        self.db.refresh(job)
+        
+        return job
+    
+    def create_level(self, level_name: str, description: Optional[str] = None) -> UserLevel:
+        """레벨 생성"""
+        level = UserLevel(
+            level_name=level_name,
+            description=description
+        )
+        self.db.add(level)
+        self.db.commit()
+        self.db.refresh(level)
+        
+        return level
