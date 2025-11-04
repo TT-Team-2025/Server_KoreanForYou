@@ -82,19 +82,19 @@ class UserService:
         
         return True
     
-    def update_user_language(self, user_id: int, level_id: int) -> bool:
+    def update_user_language(self, user_id: int, nationality: str) -> str:
         """사용자 모국어 변경"""
         user = self.get_user_by_id(user_id)
         if not user:
             return False
         
-        user.level_id = level_id
+        user.nationality = nationality
         user.updated_at = datetime.utcnow()
         self.db.commit()
         
-        return True
+        return nationality
     
-    def update_user_job(self, user_id: int, job_id: int) -> bool:
+    def update_user_job(self, user_id: int, job_id: int) -> Optional[int]:
         """사용자 직무 변경"""
         user = self.get_user_by_id(user_id)
         if not user:
@@ -104,7 +104,7 @@ class UserService:
         user.updated_at = datetime.utcnow()
         self.db.commit()
         
-        return True
+        return job_id
     
     def authenticate_user(self, email: str, password: str) -> Optional[User]:
         """사용자 인증"""

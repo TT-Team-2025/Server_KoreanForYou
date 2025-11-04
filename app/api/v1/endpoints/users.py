@@ -112,6 +112,7 @@ async def change_password(
             detail="사용자를 찾을 수 없습니다"
         )
 
+    # return 값에 비밀번호를 포함하지 않음: data=null 값
     return BaseResponse(
         success=True,
         message="비밀번호가 변경되었습니다"
@@ -126,7 +127,7 @@ async def change_language(
 ):
     """모국어 변경"""
     user_service = UserService(db)
-    updated_user_language = user_service.update_user_language(current_user.user_id, language_change.level_id)
+    updated_user_language = user_service.update_user_language(current_user.user_id, language_change.nationality)
     
     # 사용자 정보 없을 때 예외처리
     if updated_user_language is False:
@@ -134,9 +135,11 @@ async def change_language(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="사용자를 찾을 수 없습니다"
         )
+        
     return BaseResponse(
         success=True,
-        message="모국어가 변경되었습니다"
+        message="모국어가 변경되었습니다",
+        data=updated_user_language
     )
 
 
@@ -159,7 +162,8 @@ async def change_job(
     
     return BaseResponse(
         success=True,
-        message="직무가 변경되었습니다"
+        message="직무가 변경되었습니다",
+        data=updated_user_job
     )
 
 

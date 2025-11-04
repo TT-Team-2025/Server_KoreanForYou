@@ -44,7 +44,7 @@ class UserPasswordChange(BaseModel):
 
 
 class UserLanguageChange(BaseModel):
-    level_id: int
+    nationality: str
 
 
 class UserJobChange(BaseModel):
