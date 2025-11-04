@@ -29,6 +29,15 @@ class TTSRequest(BaseModel):
     format: str = "mp3"
 
 
+class LLMRequest(BaseModel):
+    """LLM 요청 스키마"""
+    prompt: str
+    prompt_role: str = "user"
+    model: Optional[str] = None
+    temperature: float = 0.7
+    max_tokens: Optional[int] = None
+
+
 @router.post("/tts")
 async def text_to_speech(
     request: TTSRequest,
@@ -257,4 +266,48 @@ async def get_transcribe_result(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"전사 결과 조회 중 오류: {str(e)}"
+        )
+
+
+@router.post("/llm/generate")
+async def generate_text_with_llm(
+    request: LLMRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    LLM을 사용하여 텍스트 생성 (텍스트 입력 -> 텍스트 출력)
+    
+    프롬프트를 입력받아 LLM API를 통해 텍스트를 생성합니다.
+    """
+    external_service = ExternalService(db)
+    
+    try:
+        result = await external_service.llm_service.generate_text(
+            prompt=request.prompt,
+            prompt_role=request.prompt_role,
+            model=request.model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens
+        )
+        
+        return BaseResponse(
+            success=True,
+            message="텍스트 생성이 완료되었습니다.",
+            data={
+                **result,  # generated_text, model, max_tokens, usage, finish_reason, full_response 포함
+                "prompt": request.prompt,
+                "prompt_role": request.prompt_role,
+                "request_model": request.model,  # 요청에서 보낸 model (None일 수 있음)
+                "request_max_tokens": request.max_tokens  # 요청에서 보낸 max_tokens
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"LLM 텍스트 생성 중 오류: {str(e)}"
         )
