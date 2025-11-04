@@ -67,7 +67,8 @@ class UserService:
         self.db.commit()
         self.db.refresh(user)
         
-        return user
+        # 업데이트 된 데이터만 반환
+        return update_data
     
     def update_user_password(self, user_id: int, new_password: str) -> bool:
         """사용자 비밀번호 변경"""

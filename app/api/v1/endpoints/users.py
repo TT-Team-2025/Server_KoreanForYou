@@ -81,7 +81,8 @@ async def update_user_info(
     
     return BaseResponse(
         success=True,
-        message="사용자 정보가 수정되었습니다"
+        message="사용자 정보가 수정되었습니다",
+        data= updated_user
     )
 
 
