@@ -62,6 +62,10 @@ CLIENT_ID = os.environ.get("RETURN_ZERO_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("RETURN_ZERO_CLIENT_SECRET")
 CLOVA_VOICE_CLIENT_ID = os.environ.get("CLOVA_VOICE_CLIENT_ID")
 CLOVA_VOICE_CLIENT_SECRET = os.environ.get("CLOVA_VOICE_CLIENT_SECRET")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -84,6 +88,7 @@ class ExternalService:
             CLOVA_VOICE_CLIENT_ID,
             CLOVA_VOICE_CLIENT_SECRET
         )
+        self.llm_service = LLMService(db)
 
     ##### 이 함수는 음성파일을 인자로 받아 stt 작업 수행하고 결과를 반환하는 함수 #####
     async def transcribe_file(self, file: UploadFile, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -198,6 +203,9 @@ class ExternalService:
             emotion=emotion,
             format=format
         )
+
+
+
 
 '''1. 마이크 입력 → 오디오 데이터
 2. 오디오 데이터 → gRPC 채널 → 리턴제로 서버
@@ -613,16 +621,199 @@ class RTZROpenAPIClient:
         if self._stream:
             self._stream.terminate()
 
-# 임시 클래스 LLMService
+
+
+
+
+
+
+class LLMClient:
+    """LLM API 클라이언트 (OpenAI 호환) - 간단한 텍스트 입력/출력"""
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+        timeout: int = 60,
+        max_retries: int = 3
+    ):
+        """
+        LLM 클라이언트 초기화
+        
+        Args:
+            api_key: API 키
+            base_url: API 베이스 URL (기본값: OpenAI API)
+            model: 사용할 모델명 (기본값: gpt-4o-mini)
+            timeout: 요청 타임아웃 (초)
+            max_retries: 최대 재시도 횟수
+        """
+        self.api_key = api_key or OPENAI_API_KEY
+        self.base_url = base_url or OPENAI_BASE_URL
+        self.model = model or OPENAI_MODEL
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self._client = httpx.AsyncClient(timeout=timeout)
+        
+        if not self.api_key:
+            logger.warning("LLM API 키가 설정되지 않았습니다. LLM 기능을 사용할 수 없습니다.")
+    
+    def _get_headers(self) -> Dict[str, str]:
+        """인증 헤더 반환"""
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+    
+    async def generate_text(
+        self,
+        prompt: str,
+        prompt_role: str = "user",
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = 1000
+    ) -> Dict[str, Any]:
+        """
+        텍스트 입력 -> 텍스트 출력 (전체 응답 정보 포함)
+        
+        Args:
+            prompt: 입력 텍스트 (프롬프트)
+            prompt_role: prompt의 role (기본값: "user", 가능한 값: "user", "assistant", "system")
+            model: 사용할 모델 (None이면 기본 모델 사용)
+            temperature: 온도 파라미터 (0.0 ~ 2.0)
+            max_tokens: 최대 토큰 수 (기본값: 1000)
+            
+        Returns:
+            전체 응답 정보를 포함한 딕셔너리
+            {
+                "generated_text": 생성된 텍스트,
+                "model": 사용된 모델명,
+                "max_tokens": 사용된 max_tokens 값,
+                "usage": 토큰 사용량 정보,
+                "finish_reason": 완료 이유,
+                "full_response": 전체 API 응답
+            }
+        """
+        if not self.api_key:
+            raise ValueError("LLM API 키가 설정되지 않았습니다.")
+        
+        # role 검증
+        valid_roles = ["system", "user", "assistant"]
+        if prompt_role not in valid_roles:
+            raise ValueError(f"prompt_role은 다음 중 하나여야 합니다: {valid_roles}")
+        
+        # 실제 사용될 값 계산
+        actual_model = model or self.model
+        actual_max_tokens = max_tokens if max_tokens is not None else 1000
+        
+        # 메시지 구성
+        messages = [{"role": prompt_role, "content": prompt}]
+        
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        payload = {
+            "model": actual_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": actual_max_tokens
+        }
+        
+        headers = self._get_headers()
+        
+        for attempt in range(self.max_retries):
+            try:
+                logger.debug(f"LLM API 호출 시도 {attempt + 1}/{self.max_retries}")
+                logger.debug(f"URL: {url}")
+                logger.debug(f"Model: {payload['model']}")
+                
+                response = await self._client.post(
+                    url,
+                    headers=headers,
+                    json=payload
+                )
+                
+                response.raise_for_status()
+                result = response.json()
+                
+                # 전체 응답 정보 반환
+                choice = result["choices"][0]
+                return {
+                    "generated_text": choice["message"]["content"],
+                    "model": result.get("model", actual_model),
+                    "max_tokens": actual_max_tokens,
+                    "usage": result.get("usage", {}),
+                    "finish_reason": choice.get("finish_reason"),
+                    "full_response": result
+                }
+                
+            except httpx.HTTPStatusError as e:
+                logger.error(f"LLM API HTTP 오류: {e.response.status_code} - {e.response.text}")
+                if attempt == self.max_retries - 1:
+                    raise
+                await asyncio.sleep(2 ** attempt)  # 지수 백오프
+                
+            except httpx.RequestError as e:
+                logger.error(f"LLM API 요청 오류: {e}")
+                if attempt == self.max_retries - 1:
+                    raise
+                await asyncio.sleep(2 ** attempt)
+    
+    async def close(self):
+        """클라이언트 종료"""
+        await self._client.aclose()
+    
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+
+
+
 class LLMService:
-    """LLM 서비스 클라이언트 (추후 구현 예정)"""
+    """LLM 서비스 클라이언트 (공통 인터페이스)"""
     def __init__(self, db: Session):
         self.db = db
+        self._llm_client: Optional[LLMClient] = None
     
-    def generate_chapter_content(self, category_id: int):
-        """카테고리 기반으로 챕터 콘텐츠 생성 (추후 구현 예정)"""
-        # LLM API 호출 로직 구현 필요
-        pass
+    @property
+    def llm_client(self) -> LLMClient:
+        """LLM 클라이언트 인스턴스 반환 (지연 초기화)"""
+        if self._llm_client is None:
+            self._llm_client = LLMClient()
+        return self._llm_client
+    
+    async def generate_text(
+        self,
+        prompt: str,
+        prompt_role: str = "user",
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = 1000
+    ) -> Dict[str, Any]:
+        """
+        텍스트 입력 -> 텍스트 출력 (전체 응답 정보 포함)
+        
+        Args:
+            prompt: 입력 텍스트 (프롬프트)
+            prompt_role: prompt의 role (기본값: "user", 가능한 값: "user", "assistant", "system")
+            model: 사용할 모델
+            temperature: 온도 파라미터
+            max_tokens: 최대 토큰 수 (기본값: 1000)
+            
+        Returns:
+            전체 응답 정보를 포함한 딕셔너리
+        """
+        return await self.llm_client.generate_text(
+            prompt=prompt,
+            prompt_role=prompt_role,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+
+
+
 
 if __name__ ==  "__main__":
     parser = argparse.ArgumentParser(
