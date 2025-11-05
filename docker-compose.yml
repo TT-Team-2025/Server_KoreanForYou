@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 데이터베이스 (v16)
+  db:
+    image: postgres:16
+    container_name: koreanforyou_db_dev
+    environment:
+      POSTGRES_DB: koreanforyou
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d koreanforyou"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis (캐시, 세션 저장)
+  redis:
+    image: redis:7-alpine
+    container_name: koreanforyou_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # FastAPI 애플리케이션 (개발 모드)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: koreanforyou
+    command: >
+      sh -c "pip install --upgrade pip &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:password@db:5432/koreanforyou
+      REDIS_URL: redis://redis:6379/0
+      PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app
+      ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # 로컬 코드 변경 → 컨테이너 자동 반영
+      - .:/app:cached
+      # 로컬 가상환경 무시
+      - /app/venv
+    tty: true
+    stdin_open: true
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
