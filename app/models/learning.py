@@ -13,9 +13,6 @@ class LearningCategory(Base):
     
     category_id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("jobs.job_id"), nullable=False)
-    # 카테고리에는 '어떤 상황'이 들어가는 게 맞지 않나?
-    ## 카테고리의 '상황'에 기반하여 여러 챕터를 구성하는 것이 옳지 않나? (챕터 별 문장이 5~10개라고 하면 너무 적음)
-    ### 그러면 job_id(직무) -> catogry(상황) -> chapter(세부 주제) -> sentence(문장) 으로 구조화해야 함
     content = Column(String(150), nullable=False)
     
     # 관계 설정

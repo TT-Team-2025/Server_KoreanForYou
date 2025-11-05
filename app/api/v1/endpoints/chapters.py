@@ -16,6 +16,20 @@ from app.services.chapter_service import ChapterService
 
 router = APIRouter()
 
+@router.post('/categories', response_model=BaseResponse)
+async def generate_categories(
+    job_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """학습 카테고리 생성 (관리자용)"""
+    chapter_service = ChapterService(db)
+    categories = await chapter_service.generate_learning_categories(job_id)
+
+    return BaseResponse(
+        success=True,
+        message="학습 카테고리가 생성되었습니다",
+        data=categories
+    )
 
 @router.get("/", response_model=ChapterListResponse)
 async def get_chapters(

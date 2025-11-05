@@ -8,7 +8,7 @@ import json
 
 from app.models.learning import Chapter, Sentence, LearningCategory
 from app.models.user import Job
-from app.schemas.learning import ChapterCreate, ChapterUpdate
+from app.schemas.learning import ChapterCreate, ChapterUpdate, LearningCategoryResponse
 from app.models.progress import UserProgress
 from app.services.external_service import LLMService
 
@@ -267,41 +267,61 @@ class ChapterService:
 
         return categories
     
-    async def generate_learning_categories(self, job_id: int) -> List[LearningCategory]:
+    async def generate_learning_categories(self, job_id: int) -> List[LearningCategoryResponse]:
         """LLM을 활용한 학습 카테고리 생성"""
         job_result = await self.db.execute(select(Job).where(Job.job_id == job_id))
         job = job_result.scalar_one_or_none()
         job_name = job.job_name
         job_description = job.description
-        
+
         prompt = f"""
+            당신은 외국인 근로자에게 한국어를 가르치는 **교육 설계 전문가**입니다.
+
+            다음 직무에 맞는 '상황 기반 한국어 학습 카테고리'를 설계하세요.
+
             직무명: {job_name}
             직무설명: {job_description}
 
-            당신은 외국인 근로자에게 한국어를 가르치는 교육 설계자입니다.
-            이 직무를 수행하는 사람이 실제로 겪는 다양한 '상황 단위 학습 카테고리'를 10개 제안해주세요.
+            ---
 
-            요구사항:
-            - 각 카테고리는 실제 현장에서 자주 겪는 하나의 구체적 상황이어야 합니다.
-            - 각 상황에서 학습자가 사용할 한국어 표현(문장, 단어)을 학습할 수 있도록 설계합니다.
-            - 중복되거나 추상적인 표현(예: 서비스, 소통, 일상 등)은 피하세요.
-            - 각 항목은 100자 이내, 한국어로 작성하세요.
-            - 결과는 JSON 배열 형태로 출력하세요.
+            ### 목표
+            이 직무를 수행하는 외국인 근로자가 **실제 현장에서 자주 겪는 상황 단위의 학습 카테고리**를 10개 제시하세요.
 
-            출력 형식은 JSON 배열로 해주세요.
-            JSON 배열 이외에 다른 말을 절대로 포함하지 마세요.
-            예: ["손님과 인사하기", "주문 요청 받기", "음식 전달하기", "결제 도와드리기", "식기 정리하기"]
+            각 카테고리는 다음을 만족해야 합니다:
+            1. **실제 직무 환경의 구체적인 상황**이어야 합니다.  
+            예: “손님에게 인사하기”, “고객 불만 응대하기”, “주문 전화 받기”
+            2. **학습자가 사용할 수 있는 표현 학습이 가능한 주제**여야 합니다.
+            3. **중복되거나 추상적인 표현(예: 서비스, 일상, 소통 등)**은 절대 피하세요.
+            4. 각 항목은 **자연스러운 한국어 문장으로 된 100자 이내의 문장형 주제**로 작성하세요.
+            5. **모든 출력은 JSON 배열 형식**으로만 작성하세요. JSON 이외의 설명 문장은 절대 포함하지 마세요.
 
-            출력 예시:
-            ["손님에게 인사하기", "손님의 주문 요청 받기", "음식 전달하기", "결제 도와드리기", "식기 정리하기"]
-        """
-        
+            ---
+
+            ### 출력 형식 (JSON 배열)
+            출력은 아래와 같은 JSON 배열 형식으로 반환해야 합니다:
+
+            [
+                "손님에게 인사하기",
+                "주문 요청 받기",
+                "음식 전달하기",
+                "결제 도와드리기",
+                "식기 정리하기"
+            ]
+
+            ---
+
+            ### 주의사항
+            - 반드시 **JSON 배열 형식**만 출력하세요.
+            - JSON 이외의 문장, 설명, 불릿포인트, 주석 등을 절대 포함하지 마세요.
+            - 각 항목은 **문자열(String)** 형태여야 하며, JSON 배열 외의 문장은 절대 포함하지 마세요.
+            """
+
         llm_result = await self.llm_service.generate_text(prompt)
         raw_content = llm_result["content"]
 
         try:
-            category_titles = json.loads(raw_content)
-            if not isinstance(category_titles, list):
+            category_contents = json.loads(raw_content)
+            if not isinstance(category_contents, list):
                 raise ValueError("JSON 배열 형식이 아닙니다.")
         except Exception:
             category_contents = [line.strip("[]\" ") for line in raw_content.split("\n") if line.strip()]
@@ -313,4 +333,9 @@ class ChapterService:
             categories.append(category)
 
         await self.db.commit()
-        return categories
+        for cat in categories:
+            await self.db.refresh(cat)
+
+        # ORM 객체를 Pydantic 모델로 변환하여 반환
+        return [LearningCategoryResponse.model_validate(cat) for cat in categories]
+
