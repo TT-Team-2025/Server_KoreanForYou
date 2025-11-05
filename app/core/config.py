@@ -18,10 +18,10 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
-    # 데이터베이스 설정
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/koreanforyou"
-    DATABASE_POOL_SIZE: int = 10
-    DATABASE_MAX_OVERFLOW: int = 20
+    # 데이터베이스 설정 (비동기 드라이버 사용)
+    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/koreanforyou"
+    DATABASE_POOL_SIZE: int = 10  # 참고용 (AsyncEngine에서는 다른 방식으로 관리)
+    DATABASE_MAX_OVERFLOW: int = 20  # 참고용
     
     # JWT 설정
     SECRET_KEY: str = "your-secret-key-here"

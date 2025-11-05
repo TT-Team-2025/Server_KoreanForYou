@@ -13,6 +13,7 @@ class UserBase(BaseModel):
     nationality: Optional[str] = None
     job_id: Optional[int] = None
     level_id: Optional[int] = None
+    description: Optional[str] = None
 
 
 class UserCreate(UserBase):

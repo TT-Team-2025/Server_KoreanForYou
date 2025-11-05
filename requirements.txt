@@ -5,7 +5,8 @@ python-multipart==0.0.6
 
 # 데이터베이스
 sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
+asyncpg  # 비동기 PostgreSQL 드라이버
+greenlet==3.0.1  # SQLAlchemy async 지원
 alembic==1.12.1
 
 # 인증 및 보안
@@ -50,3 +51,5 @@ pyaudio==0.2.14
 
 requests==2.32.3
 pydub==0.25.1
+
+openai>=1.0.0

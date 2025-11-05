@@ -18,9 +18,10 @@ class User(Base):
     profile_img = Column(String(500))
     nationality = Column(String(50))  # ISO 3166-1 alpha-2 코드
     job_id = Column(Integer, ForeignKey("jobs.job_id"))
+    description = Column(String(500))
     level_id = Column(Integer, ForeignKey("user_level.level_id"))
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # 관계 설정
     job = relationship("Job", back_populates="users")
@@ -43,12 +44,11 @@ class Job(Base):
     job_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     job_name = Column(String(100), nullable=False, index=True)
     description = Column(Text)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # 관계 설정
     users = relationship("User", back_populates="job")
     learning_categories = relationship("LearningCategory", back_populates="job")
-    chapters = relationship("Chapter", back_populates="job")
     scenarios = relationship("Scenario", back_populates="job")
 
 
@@ -79,7 +79,7 @@ class UserStatus(Base):
     current_access_days = Column(Integer, default=0)  # 연속 학습 일수
     longest_access_days = Column(Integer, default=0)  # 최장 연속 학습 일수
     last_study_date = Column(Date)  # 마지막 학습 날짜
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
     
     # 관계 설정
     user = relationship("User", back_populates="user_status")

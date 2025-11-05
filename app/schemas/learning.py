@@ -9,8 +9,7 @@ from datetime import datetime
 # 학습 카테고리 관련
 class LearningCategoryBase(BaseModel):
     job_id: int
-    title: str
-    sub_title: str = "모든 직무 공통"
+    content: str
 
 
 class LearningCategoryCreate(LearningCategoryBase):
@@ -27,7 +26,6 @@ class LearningCategoryResponse(LearningCategoryBase):
 # 챕터 관련
 class ChapterBase(BaseModel):
     category_id: int
-    job_id: Optional[int] = None
     level_id: int
     title: str
     description: Optional[str] = None
@@ -46,7 +44,6 @@ class ChapterCreate(ChapterBase):
 
 class ChapterUpdate(BaseModel):
     category_id: Optional[int] = None
-    job_id: Optional[int] = None
     level_id: Optional[int] = None
     title: Optional[str] = None
     description: Optional[str] = None

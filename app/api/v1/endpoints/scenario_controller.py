@@ -7,7 +7,7 @@ import uuid
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.services.scenario_service import ScenarioService
@@ -29,7 +29,7 @@ os.makedirs(TTS_UPLOAD_DIR, exist_ok=True)
 
 
 @router.post("/session/start", response_model=StartScenarioResponse) #세션 처음 시작할때 요청 ㄱㄱ
-async def start_session(req: StartScenarioRequest, db: Session = Depends(get_db)):
+async def start_session(req: StartScenarioRequest, db: AsyncSession = Depends(get_db)):
     service = ScenarioService(db)
     try:
         result = await service.start_scenario(
@@ -49,7 +49,7 @@ async def start_session(req: StartScenarioRequest, db: Session = Depends(get_db)
 
 
 @router.post("/session/message", response_model=SendMessageResponse) #메세지 보내는 api text형식
-async def send_message(req: SendMessageRequest, db: Session = Depends(get_db)):
+async def send_message(req: SendMessageRequest, db: AsyncSession = Depends(get_db)):
     service = ScenarioService(db)
     try:
         result = await service.send_message(thread_id=req.thread_id, user_text=req.message)
@@ -70,7 +70,7 @@ async def send_voice_message(
     thread_id: str = Form(..., description="OpenAI Thread ID"),
     file: UploadFile = File(..., description="음성 파일"),
     request: Request = None,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     음성 파일을 업로드하여 STT 변환 후 AI 응답 받기

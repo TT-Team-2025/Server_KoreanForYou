@@ -768,18 +768,20 @@ class LLMClient:
 
 
 
-
+from openai import AsyncOpenAI
 class LLMService:
     """LLM 서비스 클라이언트 (공통 인터페이스)"""
     def __init__(self, db: Session):
         self.db = db
-        self._llm_client: Optional[LLMClient] = None
+        self._llm_client: Optional[AsyncOpenAI] = None
     
     @property
-    def llm_client(self) -> LLMClient:
-        """LLM 클라이언트 인스턴스 반환 (지연 초기화)"""
+    def client(self) -> AsyncOpenAI:
         if self._llm_client is None:
-            self._llm_client = LLMClient()
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY 환경 변수가 설정되어 있지 않습니다.")
+            self._llm_client = AsyncOpenAI(api_key=api_key)
         return self._llm_client
     
     async def generate_text(
@@ -787,31 +789,18 @@ class LLMService:
         prompt: str,
         prompt_role: str = "user",
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = 1000
+        max_tokens: Optional[int] = 3000
     ) -> Dict[str, Any]:
-        """
-        텍스트 입력 -> 텍스트 출력 (전체 응답 정보 포함)
-        
-        Args:
-            prompt: 입력 텍스트 (프롬프트)
-            prompt_role: prompt의 role (기본값: "user", 가능한 값: "user", "assistant", "system")
-            model: 사용할 모델
-            temperature: 온도 파라미터
-            max_tokens: 최대 토큰 수 (기본값: 1000)
-            
-        Returns:
-            전체 응답 정보를 포함한 딕셔너리
-        """
-        return await self.llm_client.generate_text(
-            prompt=prompt,
-            prompt_role=prompt_role,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens
+        response = await self.client.chat.completions.create(
+            model=model or "gpt-4o-mini",
+            messages=[{"role": prompt_role, "content": prompt}],
+            max_tokens=max_tokens,
         )
 
-
+        return {
+            "content": response.choices[0].message.content,
+            "usage": response.usage,
+        }
 
 
 
