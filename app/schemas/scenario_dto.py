@@ -39,9 +39,21 @@ class SendVoiceMessageResponse(BaseModel):
     user_text: str
     tts_filename: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일명")
 
+
+class EndScenarioRequest(BaseModel):
+    """시나리오 종료 요청"""
+    thread_id: str = Field(..., description="OpenAI Thread ID")
+
+
+class EndScenarioResponse(BaseModel):
+    """시나리오 종료 응답"""
+    thread_id: str
+    completion_status: str
+    end_time: Optional[str] = None
+    turn_count: int
+
 # 시나리오 피드백 관련 스키마
 class ScenarioFeedbackResponse(BaseModel):
-    """시나리오 피드백 응답"""
     feedback_id: int
     user_id: Optional[int] = None
     log_id: int
