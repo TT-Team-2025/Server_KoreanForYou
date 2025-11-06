@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime
 from typing import Dict, List, Optional
 
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.models.scenario import ScenarioProgress, Scenario, Role
+from sqlalchemy.orm import Session
+from app.models.scenario import ScenarioProgress, Scenario, Role, CompletionStatus
 
 
 class ScenarioService:
@@ -51,7 +51,7 @@ class ScenarioService:
         if description:
             prompt += f"\n상황 설명: {description}"
         return prompt
-    async def start_scenario(self, topic: str, user_role: str, ai_role: str, description: Optional[str] = None) -> Dict[str, str]:
+    async def start_scenario(self, user_id: int, topic: str, user_role: str, ai_role: str, description: Optional[str] = None) -> Dict[str, str]:
         """Assistants API로 스레드 생성, 초기 질문 수행, 첫 응답 반환"""
         self._ensure_api_key()
         await self._ensure_assistant_ready(topic, user_role, ai_role, description)   # 항상 새로운 assistant 생성
@@ -129,23 +129,30 @@ class ScenarioService:
 
         if db_progress:
             # 기존 레코드 업데이트
+            db_progress.user_id = user_id
             db_progress.scenario_id = scenario.scenario_id
             db_progress.user_role_id = user_role_obj.role_id
             db_progress.ai_role_id = ai_role_obj.role_id
             db_progress.assistant_id = aid
             db_progress.thread_id = thread_id
+            db_progress.completion_status = CompletionStatus.IN_PROGRESS
+            db_progress.turn_count = 0
+            db_progress.start_time = datetime.utcnow()
+            db_progress.end_time = None
             if description:
                 db_progress.description = description
         else:
-            # 새 레코드 생성 (기본 user_id=1 사용)
+            # 새 레코드 생성 (인증된 사용자 ID 사용)
             db_progress = ScenarioProgress(
-                user_id=1,  # 기본 사용자 (없으면 자동 생성) 추후 변경 필요
+                user_id=user_id,
                 scenario_id=scenario.scenario_id,
                 user_role_id=user_role_obj.role_id,
                 ai_role_id=ai_role_obj.role_id,
                 thread_id=thread_id,
                 assistant_id=aid,
                 description=description,
+                completion_status=CompletionStatus.IN_PROGRESS,
+                turn_count=0,
             )
             self.db.add(db_progress)
 
@@ -202,7 +209,37 @@ class ScenarioService:
             await self._wait_run_complete(client, headers, thread_id, run_id)
             assistant_text = await self._get_latest_assistant_message(client, headers, thread_id)
 
+        # DB에서 발화 횟수 증가 (사용자 메시지 전송 시)
+        if db_progress:
+            if db_progress.turn_count is None:
+                db_progress.turn_count = 0
+            db_progress.turn_count += 1
+            self.db.commit()
+
         return {"assistant": assistant_text}
+
+    async def end_scenario(self, thread_id: str) -> Dict[str, str]:
+        """시나리오 종료: completion_status를 COMPLETED로 변경하고 end_time 저장"""
+        # DB에서 세션 정보 조회
+        db_progress = self.db.query(ScenarioProgress).filter(
+            ScenarioProgress.thread_id == thread_id
+        ).first()
+        
+        if not db_progress:
+            raise ValueError(f"thread_id {thread_id}에 해당하는 시나리오 진행 상황을 찾을 수 없습니다.")
+        
+        # 시나리오 종료 처리
+        db_progress.completion_status = CompletionStatus.COMPLETED
+        db_progress.end_time = datetime.utcnow()
+        
+        self.db.commit()
+        
+        return {
+            "thread_id": thread_id,
+            "completion_status": db_progress.completion_status.value,
+            "end_time": db_progress.end_time.isoformat() if db_progress.end_time else None,
+            "turn_count": db_progress.turn_count or 0,
+        }
 
     async def _ensure_assistant_ready(self, topic: str, user_role: str, ai_role: str, description: Optional[str] = None) -> None:
         """항상 새로운 assistant 생성"""

@@ -10,14 +10,18 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import oauth2_scheme
 from app.services.scenario_service import ScenarioService
 from app.services.external_service import ExternalService
+from app.services.user_service import UserService
 from app.schemas.scenario_dto import (
     StartScenarioRequest,
     StartScenarioResponse,
     SendMessageRequest,
     SendMessageResponse,
     SendVoiceMessageResponse,
+    EndScenarioRequest,
+    EndScenarioResponse,
 )
 
 
@@ -28,11 +32,33 @@ TTS_UPLOAD_DIR = "uploads/tts"
 os.makedirs(TTS_UPLOAD_DIR, exist_ok=True)
 
 
-@router.post("/session/start", response_model=StartScenarioResponse) #세션 처음 시작할때 요청 ㄱㄱ
-async def start_session(req: StartScenarioRequest, db: AsyncSession = Depends(get_db)):
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """현재 사용자 정보 가져오기"""
+    from app.core.security import get_current_user_id
+    user_id = get_current_user_id(token)
+    user_service = UserService(db)
+    user = user_service.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="사용자를 찾을 수 없습니다"
+        )
+    return user
+
+
+@router.post("/start", response_model=StartScenarioResponse) #세션 처음 시작할때 요청 ㄱㄱ
+async def start_session(
+    req: StartScenarioRequest,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     service = ScenarioService(db)
     try:
         result = await service.start_scenario(
+            user_id=current_user.user_id,
             topic=req.topic,
             user_role=req.my_role,
             ai_role=req.ai_role,
@@ -48,8 +74,8 @@ async def start_session(req: StartScenarioRequest, db: AsyncSession = Depends(ge
         )
 
 
-@router.post("/session/message", response_model=SendMessageResponse) #메세지 보내는 api text형식
-async def send_message(req: SendMessageRequest, db: AsyncSession = Depends(get_db)):
+@router.post("/message", response_model=SendMessageResponse) #메세지 보내는 api text형식
+async def send_message(req: SendMessageRequest, db: Session = Depends(get_db)):
     service = ScenarioService(db)
     try:
         result = await service.send_message(thread_id=req.thread_id, user_text=req.message)
@@ -65,7 +91,23 @@ async def send_message(req: SendMessageRequest, db: AsyncSession = Depends(get_d
         )
 
 
-@router.post("/session/message/voice", response_model=SendVoiceMessageResponse) # 음성 파일 → STT + LLM 동시 처리
+@router.post("/end", response_model=EndScenarioResponse) #시나리오 종료 api
+async def end_scenario(req: EndScenarioRequest, db: Session = Depends(get_db)):
+    """시나리오 종료: completion_status를 COMPLETED로 변경하고 end_time 저장"""
+    service = ScenarioService(db)
+    try:
+        result = await service.end_scenario(thread_id=req.thread_id)
+        return EndScenarioResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"시나리오 종료 중 오류: {str(e)}",
+        )
+
+
+@router.post("/message/voice", response_model=SendVoiceMessageResponse) # 음성 파일 → STT + LLM 동시 처리
 async def send_voice_message(
     thread_id: str = Form(..., description="OpenAI Thread ID"),
     file: UploadFile = File(..., description="음성 파일"),
