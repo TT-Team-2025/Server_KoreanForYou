@@ -15,7 +15,11 @@ from app.api.v1.api import api_router
 async def lifespan(app: FastAPI):
     """애플리케이션 시작/종료 시 실행되는 함수"""
     # 시작 시
-    await init_db()
+    try:
+        await init_db()
+    except Exception as e:
+        print(f"[STARTUP] Warning: Database initialization failed: {e}")
+        print("[STARTUP] Server will continue, but database features may not work")
     yield
     # 종료 시 (필요한 경우)
 
