@@ -28,6 +28,7 @@ from app.schemas.scenario_dto import (
     CompletedScenarioItem,
     ConversationMessage,
     ConversationResponse,
+    UserTurnCountResponse,
 )
 
 
@@ -441,5 +442,23 @@ async def get_conversation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"대화 기록 조회 중 오류: {str(e)}"
+        )
+
+
+@router.get("/speech-count", response_model=UserTurnCountResponse)
+async def get_user_turn_count(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """현재 로그인한 사용자의 전체 발화 횟수 조회"""
+    service = ScenarioService(db)
+    
+    try:
+        result = await service.get_user_turn_count(current_user.user_id)
+        return UserTurnCountResponse(**result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"발화 횟수 조회 중 오류: {str(e)}"
         )
 

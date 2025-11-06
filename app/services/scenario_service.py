@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Any
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from app.models.scenario import ScenarioProgress, Scenario, Role, CompletionStatus
 
@@ -264,6 +264,36 @@ class ScenarioService:
             .order_by(ScenarioProgress.end_time.desc())
         )
         return list(result.scalars().all())
+    
+    async def get_user_turn_count(self, user_id: int) -> Dict[str, int]:
+        """
+        사용자의 전체 발화 횟수 조회
+        
+        Args:
+            user_id: 사용자 ID
+            
+        Returns:
+            Dict: 발화 횟수 통계
+        """
+        # 전체 발화 횟수 합산 (turn_count가 NULL이 아닌 경우만)
+        total_turn_count_result = await self.db.execute(
+            select(func.coalesce(func.sum(ScenarioProgress.turn_count), 0))
+            .where(ScenarioProgress.user_id == user_id)
+        )
+        total_turn_count = total_turn_count_result.scalar() or 0
+        
+        # 시나리오 개수
+        scenario_count_result = await self.db.execute(
+            select(func.count(ScenarioProgress.progress_id))
+            .where(ScenarioProgress.user_id == user_id)
+        )
+        scenario_count = scenario_count_result.scalar() or 0
+        
+        return {
+            "user_id": user_id,
+            "total_turn_count": int(total_turn_count),
+            "scenario_count": int(scenario_count)
+        }
     
     
     async def get_conversation(self, progress_id: int, user_id: int) -> Optional[Dict[str, Any]]:
