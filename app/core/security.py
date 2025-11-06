@@ -7,7 +7,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-
+from fastapi import Depends
 from app.core.config import settings
 
 
@@ -63,7 +63,7 @@ def verify_token(token: str) -> dict:
         )
 
 
-def get_current_user_id(token: str) -> int:
+def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
     """현재 사용자 ID 추출"""
     payload = verify_token(token)
     user_id: int = payload.get("sub")
@@ -73,4 +73,4 @@ def get_current_user_id(token: str) -> int:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return user_id
+    return int(user_id)

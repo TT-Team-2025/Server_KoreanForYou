@@ -49,6 +49,11 @@ class ChapterUpdate(BaseModel):
 
 class ChapterResponse(ChapterBase):
     chapter_id: int
+    category_id: int
+    level_id: int
+    title: str
+    description: str
+    is_active: bool
     created_at: datetime
     
     class Config:

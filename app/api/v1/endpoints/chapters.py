@@ -25,6 +25,12 @@ async def generate_categories(
     chapter_service = ChapterService(db)
     categories = await chapter_service.generate_learning_categories(job_id)
 
+    if categories == False:
+        return BaseResponse(
+            success=False,
+            message="job_id가 존재하지 않습니다."
+        )
+    
     return BaseResponse(
         success=True,
         message="학습 카테고리가 생성되었습니다",
@@ -33,18 +39,19 @@ async def generate_categories(
 
 @router.get("/", response_model=ChapterListResponse)
 async def get_chapters(
-    job_id: Optional[int] = Query(None, description="직무 ID"),
+    category_id: Optional[int] = Query(None, description="직무 카테고리 ID"),
     level_id: Optional[int] = Query(None, description="레벨 ID"),
     page: int = Query(1, ge=1, description="페이지 번호"),
     size: int = Query(20, ge=1, le=100, description="페이지 크기"),
-    group: Optional[str] = Query(all, description="완료 여부 필터링"),
-    db: AsyncSession = Depends(get_db)
-):
-    """직무·레벨 기반 챕터 목록 조회"""
+    group: Optional[str] = Query('all', description="완료 여부 필터링"),
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):  
+    """직무 카테고리·레벨 기반 챕터 목록 조회"""
     chapter_service = ChapterService(db)
     chapters, total = await chapter_service.get_chapters(
-        user_id=get_current_user_id,
-        job_id=job_id,
+        user_id=user_id,
+        category_id=category_id,
         level_id=level_id,
         page=page,
         size=size,
@@ -122,8 +129,7 @@ async def update_chapter(
         message="챕터가 수정되었습니다"
     )
 
-
-# 추후 디벨롭 필요
+# 소프트 딜리트 구현됨
 @router.delete("/{chapter_id}", response_model=BaseResponse)
 async def delete_chapter(
     chapter_id: int,
@@ -131,7 +137,6 @@ async def delete_chapter(
     db: AsyncSession = Depends(get_db)
 ):
     """챕터 삭제 (관리자용)"""
-    # TODO: 관리자 권한 확인 로직 추가
     chapter_service = ChapterService(db)
 
     if not await chapter_service.get_chapter_by_id(chapter_id):
@@ -161,7 +166,7 @@ async def get_chapter_sentences(
     if not await chapter_service.get_chapter_by_id(chapter_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="챕터를 찾을 수 없습니다"
+            detail="챕터가 존재하지 않습니다."
         )
 
     sentences, total = await chapter_service.get_chapter_sentences(

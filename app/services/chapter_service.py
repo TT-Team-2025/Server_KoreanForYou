@@ -59,18 +59,6 @@ class ChapterService:
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0
 
-        # 챕터가 없으면 생성 후 재호출
-        if total == 0:
-            await self.create_chapter(ChapterCreate(category_id=category_id, level_id=level_id))
-            return await self.get_chapters(
-                user_id=user_id,
-                category_id=category_id,
-                level_id=level_id,
-                page=page,
-                size=size,
-                group=group
-            )
-
         # 페이징 처리
         stmt = stmt.offset((page - 1) * size).limit(size)
         result = await self.db.execute(stmt)
@@ -112,10 +100,19 @@ class ChapterService:
 
         return chapters, total
 
+    # 소프트 딜리트 반영
     async def get_chapter_by_id(self, chapter_id: int) -> Optional[Chapter]:
         """ID로 챕터 조회"""
         result = await self.db.execute(select(Chapter).where(Chapter.chapter_id == chapter_id))
-        return result.scalar_one_or_none()
+        chapter = result.scalar_one_or_none()
+        
+        if not chapter:
+            return False
+        
+        if not chapter.is_active:
+            return False
+        
+        return chapter
     
     async def create_chapter(self, chapter_data: ChapterCreate):
         """LLM을 활용한 챕터 생성"""
@@ -240,8 +237,6 @@ class ChapterService:
 
         return created_chapters
 
-    
-    # 추후 디벨롭 필요
     async def update_chapter(self, chapter_id: int, chapter_update: ChapterUpdate) -> Optional[Chapter]:
         """챕터 수정"""
         chapter = await self.get_chapter_by_id(chapter_id)
@@ -257,11 +252,10 @@ class ChapterService:
         
         return chapter
     
-    # 추후 디벨롭 필요
     async def delete_chapter(self, chapter_id: int) -> bool:
         """챕터 삭제 (소프트 삭제)"""
         chapter = await self.get_chapter_by_id(chapter_id)
-        if not chapter:
+        if not chapter.is_active:
             return False
         
         chapter.is_active = False
@@ -309,6 +303,10 @@ class ChapterService:
         """LLM을 활용한 학습 카테고리 생성"""
         job_result = await self.db.execute(select(Job).where(Job.job_id == job_id))
         job = job_result.scalar_one_or_none()
+
+        if not job:
+            return False
+        
         job_name = job.job_name
         job_description = job.description
 
