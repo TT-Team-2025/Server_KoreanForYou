@@ -7,7 +7,7 @@ import uuid
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import oauth2_scheme
@@ -112,7 +112,7 @@ async def send_voice_message(
     thread_id: str = Form(..., description="OpenAI Thread ID"),
     file: UploadFile = File(..., description="음성 파일"),
     request: Request = None,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     음성 파일을 업로드하여 STT 변환 후 AI 응답 받기

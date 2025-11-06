@@ -29,5 +29,5 @@ ENV PYTHONUNBUFFERED=1
 # 포트 노출
 EXPOSE 8000
 
-# 서버 실행
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 서버 실행 (async 최적화: workers 자동 설정)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

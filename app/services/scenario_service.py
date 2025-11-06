@@ -26,7 +26,7 @@ from app.models.scenario import ScenarioProgress, Scenario, Role, CompletionStat
 
 
 class ScenarioService:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
         self.api_key = os.environ.get("OPENAI_API_KEY")
         self.model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
@@ -65,26 +65,26 @@ class ScenarioService:
             description=f"대화 주제: {topic}",
         )
         self.db.add(scenario)
-        self.db.commit()
-        self.db.refresh(scenario)
-        
+        await self.db.commit()
+        await self.db.refresh(scenario)
+
         # User Role  생성
         user_role_obj = Role(
             role_name=user_role,
             description=f"사용자 역할: {user_role}",
         )
         self.db.add(user_role_obj)
-        self.db.commit()
-        self.db.refresh(user_role_obj)
-        
+        await self.db.commit()
+        await self.db.refresh(user_role_obj)
+
         # AI Role  생성
         ai_role_obj = Role(
             role_name=ai_role,
             description=f"AI 역할: {ai_role}",
         )
         self.db.add(ai_role_obj)
-        self.db.commit()
-        self.db.refresh(ai_role_obj)
+        await self.db.commit()
+        await self.db.refresh(ai_role_obj)
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -119,13 +119,14 @@ class ScenarioService:
             assistant_text = await self._get_latest_assistant_message(client, headers, thread_id)
 
         session_id = thread_id
-        
+
         # DB에 ScenarioProgress 저장/업데이트
         # 기존 progress가 있으면 업데이트, 없으면 새로 생성
-        db_progress = self.db.query(ScenarioProgress).filter(
-            ScenarioProgress.thread_id == thread_id
-        ).first()
-        
+        result = await self.db.execute(
+            select(ScenarioProgress).where(ScenarioProgress.thread_id == thread_id)
+        )
+        db_progress = result.scalar_one_or_none()
+
         if db_progress:
             # 기존 레코드 업데이트
             db_progress.user_id = user_id
@@ -154,9 +155,9 @@ class ScenarioService:
                 turn_count=0,
             )
             self.db.add(db_progress)
-        
-        self.db.commit()
-        
+
+        await self.db.commit()
+
         return {"session_id": session_id, "assistant": assistant_text, "assistant_id": aid}
 
     async def send_message(self, thread_id: str, user_text: str) -> Dict[str, str]:
@@ -164,10 +165,11 @@ class ScenarioService:
         self._ensure_api_key()
 
         # DB에서 세션 정보 조회 (thread_id로 찾기)
-        db_progress = self.db.query(ScenarioProgress).filter(
-            ScenarioProgress.thread_id == thread_id
-        ).first()
-        
+        result = await self.db.execute(
+            select(ScenarioProgress).where(ScenarioProgress.thread_id == thread_id)
+        )
+        db_progress = result.scalar_one_or_none()
+
         if not db_progress:
             # DB에 없으면 thread_id를 직접 사용하되 assistant_id가 필요
             aid = self.assistant_id

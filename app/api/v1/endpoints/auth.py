@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import timedelta
 
 from app.core.database import get_db
@@ -22,20 +22,20 @@ router = APIRouter()
 @router.post("/signup", response_model=BaseResponse)
 async def signup(
     user_data: SignupRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """회원가입"""
     user_service = UserService(db)
-    
+
     # 이메일 중복 확인
-    if user_service.get_user_by_email(user_data.email):
+    if await user_service.get_user_by_email(user_data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="이미 존재하는 이메일입니다"
         )
-    
+
     # 사용자 생성
-    user = user_service.create_user(user_data)
+    user = await user_service.create_user(user_data)
     
     return BaseResponse(
         success=True,
@@ -47,13 +47,13 @@ async def signup(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """로그인"""
     user_service = UserService(db)
-    
+
     # 사용자 인증
-    user = user_service.authenticate_user(form_data.username, form_data.password)
+    user = await user_service.authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -90,7 +90,7 @@ async def logout():
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
     refresh_token: str,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """토큰 갱신"""
     try:
@@ -100,10 +100,10 @@ async def refresh_token(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="유효하지 않은 리프레시 토큰입니다"
             )
-        
+
         user_id = payload.get("sub")
         user_service = UserService(db)
-        user = user_service.get_user_by_id(int(user_id))
+        user = await user_service.get_user_by_id(int(user_id))
         
         if not user:
             raise HTTPException(

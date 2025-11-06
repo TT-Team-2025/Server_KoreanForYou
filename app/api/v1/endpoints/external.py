@@ -5,7 +5,7 @@ import os
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 import io
@@ -41,7 +41,7 @@ class LLMRequest(BaseModel):
 @router.post("/tts")
 async def text_to_speech(
     request: TTSRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     텍스트를 음성으로 변환 (바이트 데이터 반환)
@@ -93,7 +93,7 @@ async def text_to_speech_file(
     pitch: int = Form(0),
     emotion: str = Form("neutral"),
     format: str = Form("mp3"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     텍스트를 음성 파일로 변환하여 저장
@@ -147,7 +147,7 @@ async def text_to_speech_file(
 @router.post("/stt/file") ## file 형식의 음성파일을 인자로 받아 stt 작업 수행하고 결과를 반환하는 함수 #####
 async def transcribe_file(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     파일 업로드 STT (일반 STT)
@@ -242,7 +242,7 @@ async def transcribe_file(
 @router.get("/stt/file/{transcribe_id}")
 async def get_transcribe_result(
     transcribe_id: str,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     전사 결과 조회
@@ -272,7 +272,7 @@ async def get_transcribe_result(
 @router.post("/llm/generate")
 async def generate_text_with_llm(
     request: LLMRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     LLM을 사용하여 텍스트 생성 (텍스트 입력 -> 텍스트 출력)

@@ -13,8 +13,7 @@ class LearningCategory(Base):
     
     category_id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("jobs.job_id"), nullable=False)
-    title = Column(String(150), nullable=False)
-    sub_title = Column(String(150), default="모든 직무 공통")
+    content = Column(String(150), nullable=False)
     
     # 관계 설정
     job = relationship("Job", back_populates="learning_categories")
@@ -27,7 +26,6 @@ class Chapter(Base):
     
     chapter_id = Column(Integer, primary_key=True, index=True)
     category_id = Column(Integer, ForeignKey("learning_categories.category_id"), nullable=False)
-    job_id = Column(Integer, ForeignKey("jobs.job_id"))  # 0이면 공통 챕터
     level_id = Column(Integer, ForeignKey("user_level.level_id"), nullable=False)
     title = Column(String(200), nullable=False)
     description = Column(Text)
@@ -36,7 +34,6 @@ class Chapter(Base):
     
     # 관계 설정
     category = relationship("LearningCategory", back_populates="chapters")
-    job = relationship("Job", back_populates="chapters")
     level = relationship("UserLevel", back_populates="chapters")
     sentences = relationship("Sentence", back_populates="chapter")
     chapter_feedback = relationship("ChapterFeedback", back_populates="chapter")
