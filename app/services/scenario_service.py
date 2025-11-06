@@ -21,7 +21,8 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import httpx
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.models.scenario import ScenarioProgress, Scenario, Role, CompletionStatus
 
 
@@ -71,7 +72,6 @@ class ScenarioService:
         # User Role  생성
         user_role_obj = Role(
             role_name=user_role,
-            description=f"사용자 역할: {user_role}",
         )
         self.db.add(user_role_obj)
         await self.db.commit()
@@ -80,7 +80,6 @@ class ScenarioService:
         # AI Role  생성
         ai_role_obj = Role(
             role_name=ai_role,
-            description=f"AI 역할: {ai_role}",
         )
         self.db.add(ai_role_obj)
         await self.db.commit()
@@ -214,16 +213,17 @@ class ScenarioService:
             if db_progress.turn_count is None:
                 db_progress.turn_count = 0
             db_progress.turn_count += 1
-            self.db.commit()
+            await self.db.commit()
 
         return {"assistant": assistant_text}
 
     async def end_scenario(self, thread_id: str) -> Dict[str, str]:
         """시나리오 종료: completion_status를 COMPLETED로 변경하고 end_time 저장"""
         # DB에서 세션 정보 조회
-        db_progress = self.db.query(ScenarioProgress).filter(
-            ScenarioProgress.thread_id == thread_id
-        ).first()
+        result = await self.db.execute(
+            select(ScenarioProgress).where(ScenarioProgress.thread_id == thread_id)
+        )
+        db_progress = result.scalar_one_or_none()
         
         if not db_progress:
             raise ValueError(f"thread_id {thread_id}에 해당하는 시나리오 진행 상황을 찾을 수 없습니다.")
@@ -232,7 +232,7 @@ class ScenarioService:
         db_progress.completion_status = CompletionStatus.COMPLETED
         db_progress.end_time = datetime.utcnow()
         
-        self.db.commit()
+        await self.db.commit()
         
         return {
             "thread_id": thread_id,

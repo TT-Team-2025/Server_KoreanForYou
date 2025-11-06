@@ -28,9 +28,9 @@ class Scenario(Base):
     created_at = Column(DateTime, default=func.now())
     
     # 관계 설정
-    user = relationship("User")
-    job = relationship("Job", back_populates="scenarios")
-    level = relationship("UserLevel", back_populates="scenarios")
+    # user = relationship("User")  # user_id 외래 키가 없어서 주석 처리
+    # job = relationship("Job", back_populates="scenarios")  # job_id 외래 키가 없어서 주석 처리
+    # level = relationship("UserLevel", back_populates="scenarios")  # level_id 외래 키가 없어서 주석 처리
     scenario_progress = relationship("ScenarioProgress", back_populates="scenario")
 
 

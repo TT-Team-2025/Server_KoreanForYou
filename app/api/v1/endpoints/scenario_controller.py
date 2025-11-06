@@ -32,15 +32,15 @@ TTS_UPLOAD_DIR = "uploads/tts"
 os.makedirs(TTS_UPLOAD_DIR, exist_ok=True)
 
 
-def get_current_user(
+async def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """현재 사용자 정보 가져오기"""
     from app.core.security import get_current_user_id
     user_id = get_current_user_id(token)
     user_service = UserService(db)
-    user = user_service.get_user_by_id(user_id)
+    user = await user_service.get_user_by_id(user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -53,7 +53,7 @@ def get_current_user(
 async def start_session(
     req: StartScenarioRequest,
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     service = ScenarioService(db)
     try:
@@ -75,7 +75,7 @@ async def start_session(
 
 
 @router.post("/message", response_model=SendMessageResponse) #메세지 보내는 api text형식
-async def send_message(req: SendMessageRequest, db: Session = Depends(get_db)):
+async def send_message(req: SendMessageRequest, db: AsyncSession = Depends(get_db)):
     service = ScenarioService(db)
     try:
         result = await service.send_message(thread_id=req.thread_id, user_text=req.message)
@@ -92,7 +92,7 @@ async def send_message(req: SendMessageRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/end", response_model=EndScenarioResponse) #시나리오 종료 api
-async def end_scenario(req: EndScenarioRequest, db: Session = Depends(get_db)):
+async def end_scenario(req: EndScenarioRequest, db: AsyncSession = Depends(get_db)):
     """시나리오 종료: completion_status를 COMPLETED로 변경하고 end_time 저장"""
     service = ScenarioService(db)
     try:
