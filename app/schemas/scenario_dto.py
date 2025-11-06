@@ -20,6 +20,7 @@ class StartScenarioResponse(BaseModel):
     session_id: str
     assistant: str
     assistant_id: str
+    tts_filename: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일명")
 
 
 class SendMessageRequest(BaseModel):
@@ -52,6 +53,26 @@ class EndScenarioResponse(BaseModel):
     end_time: Optional[str] = None
     turn_count: int
 
+
+class CompletedScenarioItem(BaseModel):
+    """완료된 시나리오 항목 조회 """
+    thread_id: str
+    scenario_title: str
+    scenario_description: Optional[str] = None
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    turn_count: Optional[int] = None
+    completion_status: str
+    
+    class Config:
+        from_attributes = True
+
+
+class CompletedScenarioListResponse(BaseModel):
+    """완료된 시나리오 목록 응답"""
+    scenarios: List[CompletedScenarioItem]
+    total: int
+
 # 시나리오 피드백 관련 스키마
 class ScenarioFeedbackResponse(BaseModel):
     feedback_id: int
@@ -68,3 +89,17 @@ class ScenarioFeedbackResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class ConversationMessage(BaseModel):
+    """대화 메시지 항목"""
+    role: str
+    content: str
+    created_at: Optional[str] = None
+
+class ConversationResponse(BaseModel):
+    """대화 내역 조회 응답"""
+    thread_id: str
+    scenario_title: Optional[str] = None
+    messages: List[ConversationMessage] = []
+    total_messages: int = 0
+

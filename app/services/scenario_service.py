@@ -18,11 +18,12 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.models.scenario import ScenarioProgress, Scenario, Role, CompletionStatus
 
 
@@ -44,10 +45,13 @@ class ScenarioService:
             "반드시 한국어로만 대화하세요. 외국인 노동자를 대상으로 쉬운 단어를 사용하고, "
             "상대가 이해하기 어려워하면 예시를 들어 설명하세요. "
             "말이 끝날 때는 짧게 되물어보며 대화를 이어가세요. 필요하면 자연스럽게 표현을 교정하고, "
+            f"중요: 당신은 '{ai_role}' 역할을 맡고 있고, 상대방은 '{user_role}' 역할입니다. "
+            f"역할 관계를 명확히 이해하고, '{ai_role}' 역할에 맞는 질문과 대화를 진행하세요."
+            f"역할에 맞지 않는 질문을 하지 마세요. 항상 '{ai_role}' 입장에서 '{user_role}'에게 말하세요."
             "공손하고 친절한 톤을 유지하세요.\n\n"
             f"대화 주제: {topic}\n"
             f"사용자 역할: {user_role}\n"
-            f"AI 역할: {ai_role}"
+            f"AI 역할: {ai_role}\n\n"
         )
         if description:
             prompt += f"\n상황 설명: {description}"
@@ -218,7 +222,7 @@ class ScenarioService:
         return {"assistant": assistant_text}
 
     async def end_scenario(self, thread_id: str) -> Dict[str, str]:
-        """시나리오 종료: completion_status를 COMPLETED로 변경하고 end_time 저장"""
+        """시나리오 종료: completion_status를 COMPLETED로 변경하고 end_time 저장, 대화 기록 저장"""
         # DB에서 세션 정보 조회
         result = await self.db.execute(
             select(ScenarioProgress).where(ScenarioProgress.thread_id == thread_id)
@@ -227,6 +231,13 @@ class ScenarioService:
         
         if not db_progress:
             raise ValueError(f"thread_id {thread_id}에 해당하는 시나리오 진행 상황을 찾을 수 없습니다.")
+        
+        # 시나리오 종료 전 대화 기록 저장
+        try:
+            await self.save_conversation_to_db(thread_id)
+        except Exception as e:
+            # 대화 기록 저장 실패해도 종료는 진행
+            print(f"대화 기록 저장 실패 (시나리오 종료는 계속 진행): {str(e)}")
         
         # 시나리오 종료 처리
         db_progress.completion_status = CompletionStatus.COMPLETED
@@ -239,6 +250,54 @@ class ScenarioService:
             "completion_status": db_progress.completion_status.value,
             "end_time": db_progress.end_time.isoformat() if db_progress.end_time else None,
             "turn_count": db_progress.turn_count or 0,
+        }
+
+    async def get_completed_scenarios(self, user_id: int) -> List[ScenarioProgress]:
+        """사용자의 완료된 시나리오 목록 조회"""
+        result = await self.db.execute(
+            select(ScenarioProgress)
+            .where(
+                ScenarioProgress.user_id == user_id,
+                ScenarioProgress.completion_status == CompletionStatus.COMPLETED
+            )
+            .options(selectinload(ScenarioProgress.scenario))
+            .order_by(ScenarioProgress.end_time.desc())
+        )
+        return list(result.scalars().all())
+    
+    
+    async def get_conversation(self, progress_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        DB에서 저장된 대화 기록 조회 (progress_id로 조회)
+        
+        Args:
+            progress_id: ScenarioProgress의 progress_id
+            user_id: 사용자 ID (권한 확인용)
+            
+        Returns:
+            Dict: 대화 기록 정보 (없으면 None)
+        """
+        result = await self.db.execute(
+            select(ScenarioProgress)
+            .where(
+                ScenarioProgress.progress_id == progress_id,
+                ScenarioProgress.user_id == user_id
+            )
+            .options(selectinload(ScenarioProgress.scenario))
+        )
+        db_progress = result.scalar_one_or_none()
+        
+        if not db_progress:
+            return None
+        
+        # conversation 필드에서 대화 기록 가져오기
+        conversation = db_progress.conversation
+        
+        return {
+            "thread_id": db_progress.thread_id or "",
+            "scenario_title": db_progress.scenario.title if db_progress.scenario else None,
+            "messages": conversation if conversation else [],
+            "total_messages": len(conversation) if conversation else 0
         }
 
     async def _ensure_assistant_ready(self, topic: str, user_role: str, ai_role: str, description: Optional[str] = None) -> None:
@@ -311,5 +370,101 @@ class ScenarioService:
                 if parts:
                     return "\n".join(parts).strip()
         return "죄송하지만 지금은 답변을 생성하지 못했습니다. 다시 시도해 주세요."
+
+    #대화내역 json 저장
+    async def save_conversation_to_db(self, thread_id: str) -> bool:
+        """
+        OpenAI Assistants API에서 메시지 리스트를 조회하여 conversation 필드에 JSON 형태로 저장
+        
+        Args:
+            thread_id: OpenAI Thread ID
+            
+        Returns:
+            bool: 저장 성공 여부
+        """
+        self._ensure_api_key()
+        
+        # DB에서 세션 정보 조회
+        result = await self.db.execute(
+            select(ScenarioProgress).where(ScenarioProgress.thread_id == thread_id)
+        )
+        db_progress = result.scalar_one_or_none()
+        
+        if not db_progress:
+            raise ValueError(f"thread_id {thread_id}에 해당하는 시나리오 진행 상황을 찾을 수 없습니다.")
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "OpenAI-Beta": "assistants=v2",
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                # OpenAI Assistants API에서 메시지 리스트 조회
+                # order=asc로 하면 시간순으로 정렬됨
+                response = await client.get(
+                    f"{self.base_url}/threads/{thread_id}/messages?order=asc&limit=100",
+                    headers=headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                messages_data = data.get("data", [])
+                
+                # 메시지를 JSON 형태로 변환
+                conversation_list: List[Dict[str, Any]] = []
+                
+                # 제외할 초기 사용자 메시지
+                INITIAL_USER_MESSAGE = "안녕하세요. 저는 연습을 시작하려고 합니다. 주제에 맞게 간단한 질문으로 시작해 주세요."
+                
+                for msg in messages_data:
+                    role = msg.get("role")  # "user" or "assistant"
+                    created_at_timestamp = msg.get("created_at")  # Unix timestamp
+                    content_list = msg.get("content", [])
+                    
+                    # content에서 text만 추출
+                    text_parts: List[str] = []
+                    for content in content_list:
+                        if content.get("type") == "text":
+                            text_value = content.get("text", {}).get("value", "")
+                            if text_value:
+                                text_parts.append(text_value)
+                    
+                    if text_parts:
+                        full_content = "\n".join(text_parts).strip()
+                        
+                        # 초기 사용자 메시지는 제외
+                        if role == "user" and full_content == INITIAL_USER_MESSAGE:
+                            continue
+                        
+                        # Unix timestamp를 yyyy-mm-dd 형식으로 변환
+                        created_at_str = None
+                        if created_at_timestamp:
+                            try:
+                                # Unix timestamp를 datetime 객체로 변환
+                                created_at_dt = datetime.fromtimestamp(created_at_timestamp)
+                                # yyyy-mm-dd 형식으로 변환
+                                created_at_str = created_at_dt.strftime("%Y-%m-%d")
+                            except (ValueError, TypeError, OSError):
+                                # 변환 실패 시 현재 시간 사용
+                                created_at_str = datetime.utcnow().strftime("%Y-%m-%d")
+                        
+                        conversation_list.append({
+                            "role": role,
+                            "content": full_content,
+                            "created_at": created_at_str
+                        })
+                
+                # conversation 필드에 저장
+                db_progress.conversation = conversation_list
+                await self.db.commit()
+                
+                return True
+                
+        except httpx.HTTPStatusError as e:
+            raise ValueError(f"OpenAI API 호출 실패: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            raise ValueError(f"대화 기록 저장 중 오류: {str(e)}")
 
 
