@@ -8,12 +8,14 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.security import oauth2_scheme
 from app.services.scenario_service import ScenarioService
 from app.services.external_service import ExternalService
 from app.services.user_service import UserService
+from app.models.scenario import ScenarioProgress
 from app.schemas.scenario_dto import (
     StartScenarioRequest,
     StartScenarioResponse,
@@ -22,6 +24,10 @@ from app.schemas.scenario_dto import (
     SendVoiceMessageResponse,
     EndScenarioRequest,
     EndScenarioResponse,
+    CompletedScenarioListResponse,
+    CompletedScenarioItem,
+    ConversationMessage,
+    ConversationResponse,
 )
 
 
@@ -56,6 +62,8 @@ async def start_session(
     db: AsyncSession = Depends(get_db)
 ):
     service = ScenarioService(db)
+    external_service = ExternalService(db)
+    
     try:
         result = await service.start_scenario(
             user_id=current_user.user_id,
@@ -64,6 +72,34 @@ async def start_session(
             ai_role=req.ai_role,
             description=req.description,
         )
+        assistant_text = result["assistant"]
+        
+        # AI 응답을 TTS로 변환하고 파일로 저장
+        tts_filename = None
+        try:
+            tts_audio = await external_service.text_to_speech(
+                text=assistant_text,
+                speaker="nara",  # 기본 음성
+                speed=0,
+                volume=0,
+                pitch=0,
+                emotion="neutral",
+                format="mp3"
+            )
+            # 고유 파일명 생성
+            filename = f"{uuid.uuid4()}.mp3"
+            file_path = os.path.join(TTS_UPLOAD_DIR, filename)
+            
+            # 파일 저장
+            with open(file_path, "wb") as f:
+                f.write(tts_audio)
+            
+            tts_filename = filename
+        except Exception as e:
+            # TTS 실패해도 텍스트 응답은 반환
+            print(f"TTS 변환 실패: {str(e)}")
+        
+        result["tts_filename"] = tts_filename
         return StartScenarioResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -239,6 +275,41 @@ async def send_voice_message(
         )
 
 
+@router.get("/list", response_model=CompletedScenarioListResponse)
+async def get_completed_scenarios(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """로그인한 사용자의 완료된 시나리오 목록 조회"""
+    service = ScenarioService(db)
+    
+    try:
+        scenarios = await service.get_completed_scenarios(current_user.user_id)
+        
+        # CompletedScenarioItem으로 변환
+        items = []
+        for progress in scenarios:
+            items.append(CompletedScenarioItem(
+                thread_id=progress.thread_id or "",
+                scenario_title=progress.scenario.title if progress.scenario else "",
+                scenario_description=progress.scenario.description if progress.scenario else None,
+                start_time=progress.start_time,
+                end_time=progress.end_time,
+                turn_count=progress.turn_count,
+                completion_status=progress.completion_status.value
+            ))
+        
+        return CompletedScenarioListResponse(
+            scenarios=items,
+            total=len(items)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"완료된 시나리오 목록 조회 중 오류: {str(e)}"
+        )
+
+
 @router.get("/audio/{filename}", name="get_audio_file")
 async def get_audio_file(filename: str):
     """
@@ -269,4 +340,106 @@ async def get_audio_file(filename: str):
         filename=filename
     )
 
+
+@router.post("/conversation/save/{thread_id}")
+async def save_conversation(
+    thread_id: str,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    OpenAI Assistants API에서 메시지 리스트를 조회하여 conversation 필드에 JSON 형태로 저장
+    
+    Args:
+        thread_id: OpenAI Thread ID
+    """
+    service = ScenarioService(db)
+    
+    try:
+        # 사용자 소유 확인
+        result = await db.execute(
+            select(ScenarioProgress).where(
+                ScenarioProgress.thread_id == thread_id,
+                ScenarioProgress.user_id == current_user.user_id
+            )
+        )
+        progress = result.scalar_one_or_none()
+        
+        if not progress:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="해당 시나리오를 찾을 수 없거나 접근 권한이 없습니다."
+            )
+        
+        success = await service.save_conversation_to_db(thread_id)
+        
+        if success:
+            return {
+                "success": True,
+                "message": "대화 기록이 저장되었습니다.",
+                "thread_id": thread_id
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="대화 기록 저장에 실패했습니다."
+            )
+            
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"대화 기록 저장 중 오류: {str(e)}"
+        )
+@router.get("/messages/{progress_id}", response_model=ConversationResponse)
+async def get_conversation(
+    progress_id: int,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """완료된 시나리오의 대화 기록 조회 (progress_id로 조회)"""
+    service = ScenarioService(db)
+    
+    try:
+        result = await service.get_conversation(progress_id, current_user.user_id)
+        
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="해당 시나리오를 찾을 수 없거나 접근 권한이 없습니다."
+            )
+        
+        # conversation이 None이거나 비어있는 경우
+        messages = result.get("messages", [])
+        if not messages:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="대화 기록이 저장되지 않았습니다."
+            )
+        
+        # ConversationMessage 리스트로 변환
+        message_list = [
+            ConversationMessage(
+                role=msg.get("role", ""),
+                content=msg.get("content", ""),
+                created_at=msg.get("created_at")
+            )
+            for msg in messages
+        ]
+        
+        return ConversationResponse(
+            thread_id=result["thread_id"],
+            scenario_title=result.get("scenario_title"),
+            messages=message_list,
+            total_messages=len(message_list)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"대화 기록 조회 중 오류: {str(e)}"
+        )
 
