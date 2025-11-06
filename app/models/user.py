@@ -49,7 +49,7 @@ class Job(Base):
     # 관계 설정
     users = relationship("User", back_populates="job")
     learning_categories = relationship("LearningCategory", back_populates="job")
-    scenarios = relationship("Scenario", back_populates="job")
+    # scenarios = relationship("Scenario", back_populates="job")  # Scenario에 job_id 외래 키가 없어서 주석 처리
 
 
 class UserLevel(Base):
@@ -63,7 +63,7 @@ class UserLevel(Base):
     # 관계 설정
     users = relationship("User", back_populates="level")
     chapters = relationship("Chapter", back_populates="level")
-    scenarios = relationship("Scenario", back_populates="level")
+    # scenarios = relationship("Scenario", back_populates="level")  # Scenario에 level_id 외래 키가 없어서 주석 처리
 
 
 class UserStatus(Base):

@@ -20,17 +20,17 @@ class Scenario(Base):
     __tablename__ = "scenarios"
     
     scenario_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"))
+    #user_id = Column(Integer, ForeignKey("users.user_id"))
     title = Column(String(200), nullable=False)
     description = Column(Text)
-    job_id = Column(Integer, ForeignKey("jobs.job_id"))
-    level_id = Column(Integer, ForeignKey("user_level.level_id"))
+    #job_id = Column(Integer, ForeignKey("jobs.job_id"))
+    #level_id = Column(Integer, ForeignKey("user_level.level_id"))
     created_at = Column(DateTime, default=func.now())
     
     # 관계 설정
-    user = relationship("User")
-    job = relationship("Job", back_populates="scenarios")
-    level = relationship("UserLevel", back_populates="scenarios")
+    # user = relationship("User")  # user_id 외래 키가 없어서 주석 처리
+    # job = relationship("Job", back_populates="scenarios")  # job_id 외래 키가 없어서 주석 처리
+    # level = relationship("UserLevel", back_populates="scenarios")  # level_id 외래 키가 없어서 주석 처리
     scenario_progress = relationship("ScenarioProgress", back_populates="scenario")
 
 
@@ -40,7 +40,7 @@ class Role(Base):
     
     role_id = Column(Integer, primary_key=True, index=True)
     role_name = Column(String(50), nullable=False)
-    description = Column(Text)
+    #description = Column(Text)
     
     # 관계 설정
     user_scenario_progress = relationship("ScenarioProgress", foreign_keys="ScenarioProgress.user_role_id")

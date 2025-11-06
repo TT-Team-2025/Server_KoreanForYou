@@ -39,6 +39,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db():
     """데이터베이스 초기화 (비동기)"""
-    async with engine.begin() as conn:
-        # 모든 테이블 생성
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            # 모든 테이블 생성
+            await conn.run_sync(Base.metadata.create_all)
+        print("[DATABASE] Database initialized successfully")
+    except Exception as e:
+        print(f"[DATABASE] Warning: Failed to initialize database: {e}")
+        print("[DATABASE] Server will continue, but database features may not work")

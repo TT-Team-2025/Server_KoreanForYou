@@ -66,11 +66,13 @@ def verify_token(token: str) -> dict:
 def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
     """현재 사용자 ID 추출"""
     payload = verify_token(token)
-    user_id: int = payload.get("sub")
+    user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return int(user_id)
+        
+    # 문자열이면 정수로 변환
+    return int(user_id) if isinstance(user_id, str) else user_id
