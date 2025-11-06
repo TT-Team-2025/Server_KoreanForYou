@@ -131,7 +131,7 @@ class ChapterService:
         job_name = job.job_name
         job_description = job.description
         category_content = category.content
-
+        
         prompt = f"""
         당신은 외국인 근로자에게 한국어를 가르치는 교육 설계자입니다.
         직무명: {job_name}

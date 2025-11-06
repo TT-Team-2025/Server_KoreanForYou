@@ -80,15 +80,19 @@ class SentenceService:
         )
         return list(result.scalars().all())
 
-    async def create_similar_sentence(self, sentence_id: int) -> SimilarSentence:
+    async def generate_similar_sentences(self, sentence_id: int) -> SimilarSentence:
         """유사 문장 생성"""
-        # llm 연동 로직 구현 후 확인하기
         sentence_result = await self.db.execute(
             select(Sentence).where(Sentence.sentence_id == sentence_id)
         )
         sentence = sentence_result.scalar_one_or_none()
+        if not sentence:
+            return False
+        
         sentence_content = sentence.content
-        similar_sentence = self.llm_service.generate_similar_sentence(f'{sentence_content}와 유사한 문장을 생성해줘')
+        similar_sentence = self.llm_service.generate_text(
+            f'{sentence_content}와 유사한 문장을 생성해줘'
+        )
 
         self.db.add(similar_sentence)
         await self.db.commit()
