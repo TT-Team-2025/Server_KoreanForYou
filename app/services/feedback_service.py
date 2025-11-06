@@ -28,8 +28,7 @@ class FeedbackService:
         )
         return result.scalar_one_or_none()
 
-
-    async def generarte_chapter_feedback(
+    async def generate_chapter_feedback(
         self,
         user_id: int,
         chapter_id: int,
@@ -63,50 +62,86 @@ class FeedbackService:
             sentences_progresses = []
         
         ## 종합 평가, 문장별 성취도, ai 종합 피드백, 시간 기록
-        
-        pronunciation_score = sum(
+
+        # 발음 점수 계산 (평균)
+        pronunciation_scores = [
             st.correct_word_count / st.total_word_count * 100
-            for st in sentences_progresses 
+            for st in sentences_progresses
             if st.total_word_count and st.correct_word_count
-        )
-        
-        accuracy_score = sum(
+        ]
+        pronunciation_score = int(sum(pronunciation_scores) / len(pronunciation_scores)) if pronunciation_scores else 0
+
+        # 정확도 점수 계산 (평균)
+        accuracy_scores = [
             st.recognized_word_count / st.total_word_count * 100
-            for st in sentences_progresses 
+            for st in sentences_progresses
             if st.total_word_count and st.recognized_word_count
-        )
-        
+        ]
+        accuracy_score = int(sum(accuracy_scores) / len(accuracy_scores)) if accuracy_scores else 0
+
+        # 약점 수집
         weaknesses_result = await self.db.execute(
             select(SentenceFeedback.weaknesses).where(
                 SentenceFeedback.user_id == user_id,
                 SentenceFeedback.sentence.has(chapter_id=chapter_id)
             )
         )
-        weaknesses = weaknesses_result.all()
-        
-        # llm 서비스 연동 필요
-        summary_feedback = llm_service.generate_chapter_summary_feedback(
-            weaknesses
-        ) 
-        
-        # fleuncy_score = sum(
-        #     (int)st.start_time - (int)st.end_time
-        #     for st in sentences_progresses
-        #     if st.start_time and st.end_time
-        # )        
-        
+        weaknesses_raw = weaknesses_result.all()
+        # JSON 배열들을 하나로 합치기 (중복 제거)
+        weaknesses = list(set([
+            w for sublist in weaknesses_raw
+            for w in (sublist[0] if sublist[0] else [])
+        ]))
+
+        # LLM 서비스를 통한 종합 피드백 생성
+        prompt = f"""
+다음은 한국어 학습자의 챕터 학습 결과입니다:
+
+- 완료한 문장 수: {len(sentences_progresses)}개
+- 발음 점수: {pronunciation_score}점 (100점 만점)
+- 정확도 점수: {accuracy_score}점 (100점 만점)
+- 개선이 필요한 부분: {', '.join(weaknesses) if weaknesses else '없음'}
+
+학습자에게 다음 내용을 포함한 종합 피드백을 3-4문장으로 작성해주세요:
+1. 전반적인 학습 성과에 대한 긍정적인 평가
+2. 발음과 정확도에 대한 구체적인 피드백
+3. 개선이 필요한 부분에 대한 조언 (있는 경우)
+4. 다음 학습을 위한 격려
+
+한국어로 작성하고, 친근하고 격려하는 톤으로 작성해주세요.
+"""
+
+        # llm 서비스 연동
+        llm_response = await self.llm_service.generate_text(
+            prompt=prompt,
+            prompt_role="user",
+            max_tokens=500
+        )
+        summary_feedback = llm_response.get("content", "")
+
+        # 시간 계산
+        if sentences_progresses:
+            # 첫 문장의 시작 시간과 마지막 문장의 종료 시간으로 총 학습 시간 계산
+            sorted_progresses = sorted(sentences_progresses, key=lambda x: x.start_time or x.created_at)
+            total_time_seconds = (sorted_progresses[-1].end_time - sorted_progresses[0].start_time).total_seconds() if sorted_progresses[-1].end_time else 0
+            completion_time = sorted_progresses[-1].end_time
+        else:
+            total_time_seconds = 0
+            completion_time = None
+
         # 생성
         feedback = ChapterFeedback(
             user_id=user_id,
             chapter_id=chapter_id,
-
             total_score=(pronunciation_score + accuracy_score) // 2,
             pronunciation_score=pronunciation_score,
             accuracy_score=accuracy_score,
             summary_feedback=summary_feedback,
-            weaknesses=[w for sublist in weaknesses for w in sublist],
-            completion_time=sentences_progresses[-1].end_time,
-            total_time=(sentences_progresses[0].start_time - sentences_progresses[-1].end_time).total_seconds() / 60,
+            weaknesses=weaknesses,
+            completion_time=completion_time,
+            total_time=int(total_time_seconds),
+            total_sentences=len(sentence_ids),
+            completed_sentences=len(sentences_progresses)
         )
         self.db.add(feedback)
 

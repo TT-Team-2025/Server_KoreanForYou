@@ -101,7 +101,6 @@ class SentenceUpdate(BaseModel):
 
 class SentenceResponse(SentenceBase):
     sentence_id: int
-    created_at: datetime
     
     class Config:
         from_attributes = True
@@ -119,7 +118,6 @@ class SimilarSentenceBase(BaseModel):
     sentence_id: int
     content: str
     count: int = 2  # 몇 개의 유사 문장을 생성할 지
-    translated_content: Optional[str] = None
     similarity_type: str  # 동의어, 유사표현, 난이도조정, 상황변형
 
 
@@ -129,7 +127,6 @@ class SimilarSentenceCreate(SimilarSentenceBase):
 
 class SimilarSentenceResponse(SimilarSentenceBase):
     similar_sentence_id: int
-    created_at: datetime
     
     class Config:
         from_attributes = True

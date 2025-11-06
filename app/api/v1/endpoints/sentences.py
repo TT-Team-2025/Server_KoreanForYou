@@ -103,3 +103,27 @@ async def get_similar_sentences(
     if not similar_sentences:
         similar_sentences = await sentence_service.create_similar_sentence(sentence_id)
     return similar_sentences
+
+@router.post("/{sentence_id}/similar", response_model=List[SimilarSentenceResponse])
+async def generate_similar_sentences(
+    sentence_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """해당 문장의 유사 문장 생성"""
+    sentence_service = SentenceService(db)
+    
+    if not await sentence_service.get_sentence_by_id(sentence_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            datail="문장을 찾을 수 없습니다."
+        )
+    
+    similar_sentences = sentence_service.generate_similar_sentences(sentence_id)
+    
+    if not similar_sentences:
+        raise HTTPException(
+            status_code=status.HTTP_503_NOT_FOUND,
+            datail="문장을 생성하지 못했습니다."
+        )
+    
+    return similar_sentences
