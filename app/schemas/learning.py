@@ -27,15 +27,6 @@ class LearningCategoryResponse(LearningCategoryBase):
 class ChapterBase(BaseModel):
     category_id: int
     level_id: int
-    title: str
-    description: Optional[str] = None
-    is_active: bool = True
-    
-    @validator('title')
-    def validate_title(cls, v):
-        if len(v) < 1 or len(v) > 200:
-            raise ValueError('제목은 1-200자 사이여야 합니다')
-        return v
 
 
 class ChapterCreate(ChapterBase):

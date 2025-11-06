@@ -88,12 +88,12 @@ async def create_chapter(
     """새 챕터 생성 (관리자용)"""
     # TODO: 관리자 권한 확인 로직 추가
     chapter_service = ChapterService(db)
-    chapter = await chapter_service.create_chapter(chapter_data)
+    chapters = await chapter_service.create_chapter(chapter_data)
 
     return BaseResponse(
         success=True,
         message="챕터가 생성되었습니다",
-        data={"chapter_id": chapter.chapter_id}
+        data= [ch.chapter_id for ch in chapters]
     )
 
 

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional, List, Tuple
 import json
+import ast, re
 
 from app.models.learning import Chapter, Sentence, LearningCategory
 from app.models.user import Job
@@ -116,37 +117,39 @@ class ChapterService:
         result = await self.db.execute(select(Chapter).where(Chapter.chapter_id == chapter_id))
         return result.scalar_one_or_none()
     
-    async def create_chapter(self, chapter_data: ChapterCreate) -> Chapter:
-        """챕터 생성"""
+    async def create_chapter(self, chapter_data: ChapterCreate):
+        """LLM을 활용한 챕터 생성"""
         category_result = await self.db.execute(
             select(LearningCategory).where(LearningCategory.category_id == chapter_data.category_id)
         )
         category = category_result.scalar_one_or_none()
-
         if not category:
             raise ValueError(f"category_id {chapter_data.category_id}에 해당하는 카테고리를 찾을 수 없습니다.")
 
         job_result = await self.db.execute(select(Job).where(Job.job_id == category.job_id))
         job = job_result.scalar_one_or_none()
-        
         if not job:
             raise ValueError("해당 카테고리에 연결된 직무(Job)가 존재하지 않습니다.")
 
         job_name = job.job_name
-        category_name = category.category_name
+        job_description = job.description
+        category_content = category.content
 
         prompt = f"""
         당신은 외국인 근로자에게 한국어를 가르치는 교육 설계자입니다.
         직무명: {job_name}
-        학습 카테고리: {category_name}
+        직무 설명: {job_description}
+        학습 카테고리: {category_content}
         난이도 단계(level_id): {chapter_data.level_id}
 
         이 학습 카테고리에 해당하는 '상황 기반 한국어 챕터'를 5개 제안하세요.
         각 챕터는 6개의 대표 문장을 포함해야 합니다.
         각 문장은 학습자가 실제 현장에서 사용할 수 있는 자연스러운 한국어 문장이어야 합니다.
 
-        출력 형식은 JSON 배열입니다. 답변에는 JSON 배열 이외에 다른 말을 절대로 포함하지 마세요.
-        아래 형식을 따라주세요:
+        반드시 **유효한 JSON 형식**으로 출력하세요.
+        문자열과 키는 모두 큰따옴표(")를 사용해야 합니다.
+        JSON 배열만 출력하세요. 다른 텍스트는 포함하지 마세요.
+
         [
             {{
                 "title": "주문 전화 받기",
@@ -159,49 +162,84 @@ class ChapterService:
                     "감사합니다.",
                     "안녕히 계세요."
                 ]
-            }},
-            ...
+            }}
         ]
         """
 
         response = await self.llm_service.generate_text(prompt)
-        content = response["content"]
+        raw = (response.get("content") or "").strip()
 
+        if not raw:
+            raise ValueError("LLM 응답이 비어 있습니다.")
+
+        # 1) ```json 코드펜스 제거
+        #   - 시작 펜스 제거: ```json\n
+        #   - 끝 펜스 제거: \n```
+        clean = re.sub(r"^```[a-zA-Z0-9_-]*\s*\n", "", raw)
+        clean = re.sub(r"\n```$", "", clean)
+
+        # 2) JSON 배열 본문만 슬라이스 (여분 문구/서문 방지)
+        start = clean.find("[")
+        end = clean.rfind("]")
+        if start != -1 and end != -1:
+            candidate = clean[start:end+1].strip()
+        else:
+            candidate = clean  # 혹시나 이미 순수 배열이면 그대로
+
+        # 3) JSON → 실패 시 Python literal 파싱
         try:
-            chapters_data = json.loads(content)
+            chapters_data = json.loads(candidate)
         except json.JSONDecodeError:
-            raise ValueError(f"LLM 응답이 JSON 형식이 아닙니다:\n{content}")
+            try:
+                chapters_data = ast.literal_eval(candidate)
+            except Exception:
+                # 디버그 용이하게 원문 일부만 보여줌
+                preview = candidate[:500] + ("..." if len(candidate) > 500 else "")
+                raise ValueError(f"LLM 응답이 JSON 형식이 아닙니다. 미리보기:\n{preview}")
 
+        if not isinstance(chapters_data, list):
+            raise ValueError(f"LLM 응답이 JSON 배열이 아닙니다: {type(chapters_data)}")
+        
         created_chapters = []
 
-        for ch in chapters_data:
-            chapter_create = ChapterCreate(
+        for i, ch in enumerate(chapters_data):
+            if not isinstance(ch, dict):
+                raise ValueError(f"{i+1}번째 항목이 객체가 아닙니다: {ch}")
+
+            # title/description 정규화
+            t = ch.get("title")
+            if not isinstance(t, str) or not t.strip():
+                raise ValueError(f"{i+1}번째 챕터에 유효한 title이 없습니다: {ch}")
+            title = t.strip()
+
+            d = ch.get("description")
+            description = d.strip() if isinstance(d, str) else ""
+
+            chapter = Chapter(
                 category_id=chapter_data.category_id,
                 level_id=chapter_data.level_id,
-                title=ch["title"],
-                description=ch.get("description", ""),
-                is_active=True
+                title=title,
+                description=description,
+                is_active=True,
             )
-
-            chapter = Chapter(**chapter_create.model_dump())
             self.db.add(chapter)
-            await self.db.commit()
-            await self.db.refresh(chapter)
+            await self.db.flush()  # chapter_id 확보
 
             for sent_text in ch.get("sentences", []):
-                sentence = Sentence(
-                    chapter_id=chapter.chapter_id,
-                    content=sent_text,
-                    translated_content=None,
-                    tts_url=None
-                )
-                self.db.add(sentence)
+                if isinstance(sent_text, str) and sent_text.strip():
+                    self.db.add(Sentence(
+                        chapter_id=chapter.chapter_id,
+                        content=sent_text.strip(),
+                        translated_content=None,
+                        tts_url=None,
+                    ))
 
-            await self.db.commit()
             created_chapters.append(chapter)
 
+        await self.db.commit()
+
         return created_chapters
-    
+
     
     # 추후 디벨롭 필요
     async def update_chapter(self, chapter_id: int, chapter_update: ChapterUpdate) -> Optional[Chapter]:
