@@ -103,3 +103,10 @@ class ConversationResponse(BaseModel):
     messages: List[ConversationMessage] = []
     total_messages: int = 0
 
+
+class UserTurnCountResponse(BaseModel):
+    """사용자 발화 횟수 조회 응답"""
+    user_id: int
+    total_turn_count: int
+    scenario_count: int  # 시나리오 개수
+
