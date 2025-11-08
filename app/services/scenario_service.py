@@ -148,8 +148,9 @@ class ScenarioService:
             db_progress.thread_id = thread_id
             db_progress.completion_status = CompletionStatus.IN_PROGRESS
             db_progress.turn_count = 0
-            db_progress.start_time = datetime.utcnow()
+            db_progress.start_time = datetime.now()
             db_progress.end_time = None
+            db_progress.total_time = None
             if description:
                 db_progress.description = description
         else:
@@ -164,6 +165,8 @@ class ScenarioService:
                 description=description,
                 completion_status=CompletionStatus.IN_PROGRESS,
                 turn_count=0,
+                start_time=datetime.now(),
+                total_time=None,
             )
             self.db.add(db_progress)
 
@@ -249,7 +252,13 @@ class ScenarioService:
         
         # 시나리오 종료 처리
         db_progress.completion_status = CompletionStatus.COMPLETED
-        db_progress.end_time = datetime.utcnow()
+        end_time = datetime.now()
+        db_progress.end_time = end_time
+        if db_progress.start_time:
+            total_time_delta = end_time - db_progress.start_time
+            db_progress.total_time = int(total_time_delta.total_seconds())
+        else:
+            db_progress.total_time = None
         
         await self.db.commit()
         
@@ -258,6 +267,7 @@ class ScenarioService:
             "completion_status": db_progress.completion_status.value,
             "end_time": db_progress.end_time.isoformat() if db_progress.end_time else None,
             "turn_count": db_progress.turn_count or 0,
+            "total_time": db_progress.total_time,
         }
 
     async def get_completed_scenarios(self, user_id: int) -> List[ScenarioProgress]:
