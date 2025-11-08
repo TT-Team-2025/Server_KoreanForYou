@@ -67,6 +67,7 @@ class ScenarioProgress(Base):
     
     start_time = Column(DateTime, nullable=False, default=func.now())
     end_time = Column(DateTime)
+    total_time = Column(Integer)  # 총 학습 시간(초)
     completion_status = Column(Enum(CompletionStatus), nullable=False, default=CompletionStatus.IN_PROGRESS)
     
     # 관계 설정

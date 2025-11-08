@@ -52,6 +52,7 @@ class EndScenarioResponse(BaseModel):
     completion_status: str
     end_time: Optional[str] = None
     turn_count: int
+    total_time: Optional[int] = None
 
 
 class CompletedScenarioItem(BaseModel):
@@ -63,6 +64,7 @@ class CompletedScenarioItem(BaseModel):
     end_time: Optional[datetime] = None
     turn_count: Optional[int] = None
     completion_status: str
+    total_time: Optional[int] = None
     
     class Config:
         from_attributes = True

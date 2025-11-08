@@ -39,9 +39,11 @@ class SentenceProgressBase(BaseModel):
     is_completed: bool = False
     stt_audio_url: Optional[str] = None
     stt_transcript: Optional[str] = None
+    word_timestamps: Optional[List[str]] = None
     total_word_count: Optional[int] = None
     correct_word_count: Optional[int] = None
     recognized_word_count: Optional[int] = None
+    total_time: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
 
@@ -54,9 +56,11 @@ class SentenceProgressUpdate(BaseModel):
     is_completed: Optional[bool] = None
     stt_audio_url: Optional[str] = None
     stt_transcript: Optional[str] = None
+    word_timestamps: Optional[List[str]] = None
     total_word_count: Optional[int] = None
     correct_word_count: Optional[int] = None
     recognized_word_count: Optional[int] = None
+    total_time: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
 
