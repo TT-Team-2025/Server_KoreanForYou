@@ -3,6 +3,8 @@
 """
 import os
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,23 +56,6 @@ async def get_chapter_progress(
     return chapter_progress
 
 
-@router.post("/chapters/{chapter_id}", response_model=BaseResponse)
-async def update_chapter_progress(
-    chapter_id: int,
-    progress_update: UserProgressUpdate,
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
-):
-    """챕터 진행률 저장/갱신"""
-    user_id = get_current_user_id(token)
-    progress_service = ProgressService(db)
-
-    await progress_service.update_user_progress(user_id, chapter_id, progress_update)
-
-    return BaseResponse(
-        success=True,
-        message="챕터 진행률이 업데이트되었습니다"
-    )
 
 
 @router.get("/sentences/{sentence_id}", response_model=SentenceProgressResponse)
