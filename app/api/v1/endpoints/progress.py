@@ -1,14 +1,18 @@
 """
 학습 진행 관련 API 엔드포인트
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id, oauth2_scheme
 from app.schemas.progress import (
     ProgressStatsResponse, ChapterProgressResponse, UserProgressHistoryResponse,
-    UserProgressResponse, SentenceProgressResponse, UserProgressUpdate, SentenceProgressUpdate
+    UserProgressResponse, SentenceProgressResponse, UserProgressUpdate
 )
 from app.schemas.common import BaseResponse
 from app.services.progress_service import ProgressService
@@ -52,23 +56,6 @@ async def get_chapter_progress(
     return chapter_progress
 
 
-@router.post("/chapters/{chapter_id}", response_model=BaseResponse)
-async def update_chapter_progress(
-    chapter_id: int,
-    progress_update: UserProgressUpdate,
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
-):
-    """챕터 진행률 저장/갱신"""
-    user_id = get_current_user_id(token)
-    progress_service = ProgressService(db)
-
-    await progress_service.update_user_progress(user_id, chapter_id, progress_update)
-
-    return BaseResponse(
-        success=True,
-        message="챕터 진행률이 업데이트되었습니다"
-    )
 
 
 @router.get("/sentences/{sentence_id}", response_model=SentenceProgressResponse)
@@ -95,19 +82,58 @@ async def get_sentence_progress(
 @router.patch("/sentences/{sentence_id}", response_model=BaseResponse)
 async def update_sentence_progress(
     sentence_id: int,
-    progress_update: SentenceProgressUpdate,
+    file: UploadFile = File(..., description="사용자 음성 녹음 파일"),
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
 ):
-    """문장 학습 완료 상태 업데이트"""
+    """문장 학습 진행(STT 기반) 업데이트"""
+    allowed_extensions = [".mp4", ".m4a", ".mp3", ".amr", ".flac", ".wav"]
+    file_extension = os.path.splitext(file.filename)[1].lower()
+
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"지원하지 않는 파일 형식입니다. 지원 형식: {', '.join(allowed_extensions)}"
+        )
+
     user_id = get_current_user_id(token)
     progress_service = ProgressService(db)
 
-    await progress_service.update_sentence_progress(user_id, sentence_id, progress_update)
+    try:
+        progress, mismatch_info = await progress_service.update_sentence_progress(user_id, sentence_id, file)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc)
+        ) from exc
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            detail="전사 결과 대기 시간이 초과되었습니다."
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc)
+        ) from exc
 
     return BaseResponse(
         success=True,
-        message="문장 진행 상태가 업데이트되었습니다"
+        message="문장 진행 상태가 업데이트되었습니다",
+        data={
+            "progress_id": progress.progress_id,
+            "stt_transcript": progress.stt_transcript,
+            "word_timestamps": progress.word_timestamps,
+            "total_word_count": progress.total_word_count,
+            "recognized_word_count": progress.recognized_word_count,
+            "correct_word_count": progress.correct_word_count,
+            "start_time": progress.start_time,
+            "end_time": progress.end_time,
+            "total_time": progress.total_time,
+            "missing_words": mismatch_info["missing_words"],
+            "extra_words": mismatch_info["extra_words"],
+            "utterances": mismatch_info["raw_utterances"]
+        }
     )
 
 

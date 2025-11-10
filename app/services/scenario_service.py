@@ -41,37 +41,19 @@ class ScenarioService:
 
     def _build_system_prompt(self, topic: str, user_role: str, ai_role: str, description: Optional[str] = None) -> str:
         prompt = (
-            "당신은 한국어 말하기 연습을 도와주는 역할극 파트너입니다. "
+            "당신은 한국어 말하기 연습을 도와주는 한국어 코칭 선생님입니다. "
             "반드시 한국어로만 대화하세요. 외국인 노동자를 대상으로 쉬운 단어를 사용하고, "
             "상대가 이해하기 어려워하면 예시를 들어 설명하세요. "
             "말이 끝날 때는 짧게 되물어보며 대화를 이어가세요. 필요하면 자연스럽게 표현을 교정하고, "
             "공손하고 친절한 톤을 유지하세요.\n\n"
             f"**역할 설정 (매우 중요!)**\n"
-            f"- 당신의 역할: '{ai_role}'\n"
-            f"- 상대방의 역할: '{user_role}'\n"
+            f"- 학습자의 역할: '{user_role}'\n"
+            f"- AI의 역할(당신의 역할): '{ai_role}'\n"
             f"- 대화 주제: {topic}\n\n"
-            f"**역할극 규칙 (절대 지켜야 함!):**\n"
-            f"1. 당신은 '{ai_role}' 역할을 완전히 몰입하여 수행해야 합니다.\n"
-            f"2. '{ai_role}' 역할에 맞는 말투, 행동, 질문만 해야 합니다.\n"
-            f"3. '{user_role}' 역할의 사람이 해야 할 말이나 행동을 절대 하지 마세요.\n"
-            f"4. '{user_role}' 역할의 사람이 해야 할 질문을 당신이 하면 안 됩니다.\n"
-            f"5. 예를 들어, '{user_role}'이 '카운터직원'이고 '{ai_role}'이 '손님'이라면, "
-            f"당신은 손님 역할이므로 '어떤 물건을 찾고 계신가요?' 같은 카운터직원의 말을 하면 안 됩니다.\n"
-            f"6. 상황에 맞게 '{ai_role}' 역할로서 자연스럽게 대화를 시작하세요.\n"
-            f"7. 역할이 바뀌지 않도록 항상 '{ai_role}' 입장을 유지하세요.\n\n"
         )
         if description:
             prompt += f"**상황 설명:** {description}\n\n"
-            prompt += (
-                f"위 상황에서 '{ai_role}' 역할로서 '{user_role}' 역할의 사람과 자연스럽게 대화를 시작하세요.\n"
-                f"예를 들어, '{ai_role}'이 '{user_role}'에게 먼저 말을 걸어야 하는 상황이라면 그렇게 하세요.\n"
-                f"반대로 '{user_role}'이 먼저 말을 걸어야 하는 상황이라면, '{user_role}'의 말을 듣고 '{ai_role}' 역할에 맞게 응답하세요.\n"
-            )
-        else:
-            prompt += (
-                f"'{ai_role}' 역할로서 '{user_role}' 역할의 사람과 자연스럽게 대화를 시작하세요.\n"
-                f"상황에 맞게 '{ai_role}' 역할에 적합한 첫 마디를 하세요.\n"
-            )
+        
         return prompt
     async def start_scenario(self, user_id: int, topic: str, user_role: str, ai_role: str, description: Optional[str] = None) -> Dict[str, str]:
         """Assistants API로 스레드 생성, 초기 질문 수행, 첫 응답 반환"""
@@ -118,23 +100,15 @@ class ScenarioService:
             thr.raise_for_status()  #정상 반환이 아니면 예외 발생(raise_for_status)
             thread_id = thr.json()["id"] #스레드 아이디 반환
 
-            # 2) 초기 사용자 메시지 추가 (역할에 맞게 수정)
-            # 역할을 명확히 하고, AI가 그 역할에 맞게 대화를 시작하도록 지시
+            # 2) 초기 사용자 메시지 추가 (한국어 코칭 형식)
+            # 한국어 코칭을 시작하도록 요청
             initial_message = (
-                f"대화를 시작하겠습니다. "
-                f"저는 '{user_role}' 역할이고, 당신은 '{ai_role}' 역할입니다. "
+                f"한국어 말하기 연습을 시작하겠습니다. "
+                f"**역할을 명확히 기억하세요:** 사용자는 '{user_role}' 역할을 연습하고 있고, AI는 '{ai_role}' 역할입니다. "
+                f"'{user_role}' 역할에서 말할 수 있는 자연스러운 한국어 문장을 제시하고, "
+                f"그 문장에 대해 '{ai_role}' 역할로서 어떻게 대답할지 코칭해주세요. "
+                f"**올바른 예시 형식:** \"{ai_role}이 \"[문장]\", 라고 할 수 있어요. 이럴땐 {user_role}은 어떻게 대답하실거에요?\" "
             )
-            if description:
-                initial_message += (
-                    f"상황: {description}. "
-                    f"이 상황에서 '{ai_role}' 역할로서 '{user_role}' 역할의 사람과 자연스럽게 대화를 시작해 주세요. "
-                    f"'{ai_role}' 역할에 맞는 첫 마디를 하세요."
-                )
-            else:
-                initial_message += (
-                    f"'{ai_role}' 역할로서 '{user_role}' 역할의 사람과 자연스럽게 대화를 시작해 주세요. "
-                    f"'{ai_role}' 역할에 맞는 첫 마디를 하세요."
-                )
             
             await client.post(
                 f"{self.base_url}/threads/{thread_id}/messages",
@@ -174,8 +148,9 @@ class ScenarioService:
             db_progress.thread_id = thread_id
             db_progress.completion_status = CompletionStatus.IN_PROGRESS
             db_progress.turn_count = 0
-            db_progress.start_time = datetime.utcnow()
+            db_progress.start_time = datetime.now()
             db_progress.end_time = None
+            db_progress.total_time = None
             if description:
                 db_progress.description = description
         else:
@@ -190,6 +165,8 @@ class ScenarioService:
                 description=description,
                 completion_status=CompletionStatus.IN_PROGRESS,
                 turn_count=0,
+                start_time=datetime.now(),
+                total_time=None,
             )
             self.db.add(db_progress)
 
@@ -275,7 +252,13 @@ class ScenarioService:
         
         # 시나리오 종료 처리
         db_progress.completion_status = CompletionStatus.COMPLETED
-        db_progress.end_time = datetime.utcnow()
+        end_time = datetime.now()
+        db_progress.end_time = end_time
+        if db_progress.start_time:
+            total_time_delta = end_time - db_progress.start_time
+            db_progress.total_time = int(total_time_delta.total_seconds())
+        else:
+            db_progress.total_time = None
         
         await self.db.commit()
         
@@ -284,6 +267,7 @@ class ScenarioService:
             "completion_status": db_progress.completion_status.value,
             "end_time": db_progress.end_time.isoformat() if db_progress.end_time else None,
             "turn_count": db_progress.turn_count or 0,
+            "total_time": db_progress.total_time,
         }
 
     async def get_completed_scenarios(self, user_id: int) -> List[ScenarioProgress]:
