@@ -83,7 +83,7 @@ async def get_sentence_feedback(
     return feedback
 
 ## 저장 -> 생성 로직 필요
-@router.post("/sentences/{sentence_id}", response_model=BaseResponse)
+@router.post("/sentences/{sentence_id}", response_model=SentenceFeedbackResponse)
 async def generate_sentence_feedback(
     sentence_id: int,
     feedback_data: SentenceFeedbackCreate,
@@ -94,12 +94,17 @@ async def generate_sentence_feedback(
     user_id = get_current_user_id(token)
     feedback_service = FeedbackService(db)
 
-    feedback = await feedback_service.generate_sentence_feedback(user_id, sentence_id, feedback_data)
-
-    if not feedback:
+    try:
+        feedback = await feedback_service.generate_sentence_feedback(user_id, sentence_id, feedback_data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="문장 피드백 생성에 실패했습니다"
+            detail=f"문장 피드백 생성에 실패했습니다: {str(e)}"
         )
 
     return feedback

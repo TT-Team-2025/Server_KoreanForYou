@@ -4,8 +4,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
+import re
+from collections import Counter
 
-from app.models.learning import ChapterFeedback, SentenceFeedback
+from app.models.learning import ChapterFeedback, SentenceFeedback, Sentence
 from app.models.scenario import ScenarioFeedback, ScenarioProgress
 from app.schemas.learning import ChapterFeedbackCreate, SentenceFeedbackCreate
 from app.services.external_service import LLMService
@@ -151,12 +153,15 @@ class FeedbackService:
         return feedback
     
     async def get_sentence_feedback(self, user_id: int, sentence_id: int) -> Optional[SentenceFeedback]:
-        """문장 피드백 조회"""
+        """문장 피드백 조회 (가장 최근 피드백 반환)"""
         result = await self.db.execute(
-            select(SentenceFeedback).where(
+            select(SentenceFeedback)
+            .join(SentenceProgress, SentenceFeedback.sentence_progress_id == SentenceProgress.progress_id)
+            .where(
                 SentenceFeedback.user_id == user_id,
                 SentenceFeedback.sentence_id == sentence_id
             )
+            .order_by(SentenceProgress.created_at.desc())
         )
         return result.scalar_one_or_none()
     
@@ -165,21 +170,122 @@ class FeedbackService:
         self,
         user_id: int,
         sentence_id: int,
-        sentence_progress_id: int
+        feedback_data: SentenceFeedbackCreate
     ) -> SentenceFeedback:
-        """문장 피드백 생성"""
+        """문장 피드백 생성 및 저장"""
+        sentence_progress_id = feedback_data.sentence_progress_id
 
-        # 생성
+        # 문장 진행 상황 조회
+        progress_result = await self.db.execute(
+            select(SentenceProgress).where(
+                SentenceProgress.progress_id == sentence_progress_id,
+                SentenceProgress.user_id == user_id,
+                SentenceProgress.sentence_id == sentence_id
+            )
+        )
+        sentence_progress = progress_result.scalar_one_or_none()
+
+        if not sentence_progress:
+            raise ValueError("문장 진행 상황을 찾을 수 없습니다")
+
+        # 원본 문장 조회
+        sentence_result = await self.db.execute(
+            select(Sentence).where(Sentence.sentence_id == sentence_id)
+        )
+        sentence = sentence_result.scalar_one_or_none()
+
+        if not sentence:
+            raise ValueError("문장을 찾을 수 없습니다")
+
+        # 토큰화 함수 (progress_service와 동일한 로직)
+        def tokenize(text: str):
+            tokens = []
+            for raw in text.split():
+                cleaned = re.sub(r"[^\w가-힣]", "", raw).lower()
+                if cleaned:
+                    tokens.append(cleaned)
+            return tokens
+
+        # 원본 문장과 STT 결과 토큰화
+        target_tokens = tokenize(sentence.content or "")
+        stt_tokens = tokenize(sentence_progress.stt_transcript or "")
+
+        # 단어 빈도 계산
+        target_counter = Counter(target_tokens)
+        stt_counter = Counter(stt_tokens)
+
+        # missing_words: 원본에는 있지만 STT에 없거나 부족한 단어들
+        missing_words = []
+        for word, count in target_counter.items():
+            remaining = count - min(count, stt_counter.get(word, 0))
+            if remaining > 0:
+                missing_words.extend([word] * remaining)
+
+        # extra_words: STT에는 있지만 원본에 없거나 초과된 단어들
+        extra_words = []
+        for word, count in stt_counter.items():
+            overflow = count - target_counter.get(word, 0)
+            if overflow > 0:
+                extra_words.extend([word] * overflow)
+
+        # weaknesses 생성 (발음이 틀린 단어, 빠진 단어 등)
+        weaknesses = []
+        if missing_words:
+            weaknesses.append(f"빠뜨린 단어: {', '.join(set(missing_words))}")
+        if extra_words:
+            weaknesses.append(f"추가된 단어: {', '.join(set(extra_words))}")
+
+        # 정확도 계산
+        if sentence_progress.total_word_count and sentence_progress.correct_word_count:
+            accuracy_rate = (sentence_progress.correct_word_count / sentence_progress.total_word_count) * 100
+            if accuracy_rate < 70:
+                weaknesses.append("발음 정확도가 낮습니다")
+
+        # LLM을 통한 구체적인 피드백 생성 (선택적)
+        if weaknesses:
+            prompt = f"""
+다음은 한국어 학습자의 문장 발음 연습 결과입니다:
+
+- 원본 문장: {sentence.content}
+- 인식된 문장: {sentence_progress.stt_transcript}
+- 전체 단어 수: {sentence_progress.total_word_count}
+- 정확히 발음한 단어 수: {sentence_progress.correct_word_count}
+- 개선이 필요한 부분:
+{chr(10).join(f"  • {w}" for w in weaknesses)}
+
+학습자에게 2-3문장으로 구체적인 개선 피드백을 작성해주세요:
+1. 잘못 발음한 단어나 빠뜨린 단어에 대한 지적
+2. 개선 방법에 대한 조언
+3. 격려의 메시지
+
+한국어로 작성하고, 친근하고 격려하는 톤으로 작성해주세요.
+"""
+
+            try:
+                llm_response = await self.llm_service.generate_text(
+                    prompt=prompt,
+                    prompt_role="user",
+                    max_tokens=300
+                )
+                ai_feedback = llm_response.get("content", "")
+                if ai_feedback:
+                    weaknesses.append(f"AI 피드백: {ai_feedback}")
+            except Exception:
+                # LLM 서비스 실패 시 무시하고 계속 진행
+                pass
+
+        # 피드백 생성
         feedback = SentenceFeedback(
             user_id=user_id,
             sentence_id=sentence_id,
-            sentence_progress_id=sentence_progress_id
+            sentence_progress_id=sentence_progress_id,
+            weaknesses=weaknesses if weaknesses else None
         )
         self.db.add(feedback)
 
         await self.db.commit()
         await self.db.refresh(feedback)
-        
+
         return feedback
     
     async def get_scenario_feedback(self, user_id: int, scenario_id: int) -> Optional[ScenarioFeedback]:

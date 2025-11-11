@@ -164,7 +164,6 @@ class SentenceFeedbackBase(BaseModel):
     user_id: int
     sentence_id: int
     sentence_progress_id: int
-    # weaknesses: Optional[List[str]] = None
 
 
 class SentenceFeedbackCreate(SentenceFeedbackBase):
@@ -173,6 +172,7 @@ class SentenceFeedbackCreate(SentenceFeedbackBase):
 
 class SentenceFeedbackResponse(SentenceFeedbackBase):
     feedback_id: int
-    
+    weaknesses: Optional[List[str]] = None
+
     class Config:
         from_attributes = True
