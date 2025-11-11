@@ -3,16 +3,18 @@
 """
 import os
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id, oauth2_scheme
 from app.schemas.progress import (
-    ProgressStatsResponse, ChapterProgressResponse, UserProgressHistoryResponse,
-    UserProgressResponse, SentenceProgressResponse, UserProgressUpdate
+    ProgressStatsResponse,
+    ChapterProgressResponse,
+    UserProgressHistoryResponse,
+    UserProgressResponse,
+    SentenceProgressResponse,
+    UserProgressUpdate,
 )
 from app.schemas.common import BaseResponse
 from app.services.progress_service import ProgressService

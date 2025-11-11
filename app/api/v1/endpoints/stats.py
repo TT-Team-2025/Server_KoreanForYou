@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_current_user_id, oauth2_scheme
 from app.schemas.common import BaseResponse
+from app.schemas.stats import LearningSummaryResponse, RecentScenarioItem
 from app.services.stats_service import StatsService
 
 router = APIRouter()
@@ -26,9 +28,22 @@ async def get_recent_scenarios(
             detail="시나리오를 찾을 수 없습니다"
         )
 
+    items = [RecentScenarioItem(**item) for item in scenario_list]
+
     return BaseResponse(
         success=True,
         message="시나리오 목록을 조회했습니다",
-        data=scenario_list
+        data=[item.model_dump() for item in items],
     )
+
+
+@router.get("/learning/summary", response_model=LearningSummaryResponse)
+async def get_learning_summary(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+):
+    """현재 사용자 학습 요약 정보 조회"""
+    user_id = get_current_user_id(token)
+    stats_service = StatsService(db)
+    return await stats_service.get_learning_summary(user_id)
 

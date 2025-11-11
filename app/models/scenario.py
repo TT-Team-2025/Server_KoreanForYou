@@ -60,6 +60,7 @@ class ScenarioProgress(Base):
     turn_count = Column(Integer)  # 발화 횟수
     description = Column(Text)  # 상황 설명
     conversation = Column(JSON)  # 대화 내역 (JSON 형태)
+    speech_metrics = Column(JSON, default=list)  # 음성 평가 지표 기록
     
     # OpenAI Assistants API 관련
     thread_id = Column(String(255), unique=True, nullable=True, index=True)  # OpenAI thread_id
