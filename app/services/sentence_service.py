@@ -2,7 +2,7 @@
 문장 관련 서비스
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import Optional, List
 
 from app.models.learning import Sentence, SimilarSentence
@@ -18,6 +18,13 @@ class SentenceService:
     async def get_sentence_by_id(self, sentence_id: int) -> Optional[Sentence]:
         """ID로 문장 조회"""
         result = await self.db.execute(select(Sentence).where(Sentence.sentence_id == sentence_id))
+        return result.scalar_one_or_none()
+
+    async def get_random_sentence(self) -> Optional[Sentence]:
+        """랜덤으로 문장 하나 조회"""
+        result = await self.db.execute(
+            select(Sentence).order_by(func.random()).limit(1)
+        )
         return result.scalar_one_or_none()
 
     async def create_sentence(self, chapter_id: int) -> Sentence:

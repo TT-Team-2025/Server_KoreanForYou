@@ -17,6 +17,23 @@ from app.services.sentence_service import SentenceService
 router = APIRouter()
 
 
+@router.get("/random", response_model=SentenceResponse)
+async def get_random_sentence(
+    db: AsyncSession = Depends(get_db)
+):
+    """랜덤으로 문장 하나 조회"""
+    sentence_service = SentenceService(db)
+    sentence = await sentence_service.get_random_sentence()
+
+    if not sentence:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="문장을 찾을 수 없습니다"
+        )
+
+    return sentence
+
+
 @router.get("/{sentence_id}", response_model=SentenceResponse)
 async def get_sentence(
     sentence_id: int,
