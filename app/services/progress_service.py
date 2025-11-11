@@ -17,7 +17,8 @@ from app.models.learning import Chapter, Sentence
 from app.models.progress import UserProgress, SentenceProgress
 from app.schemas.progress import (
     ProgressStatsResponse,
-    ChapterProgressResponse, UserProgressHistoryResponse
+    ChapterProgressResponse,
+    UserProgressHistoryResponse,
 )
 from app.services.external_service import ExternalService
 
@@ -246,7 +247,7 @@ class ProgressService:
             "model_name": "sommers",
             "language": "ko",
             "use_itn": True,
-            "use_disfluency_filter": True,
+            "use_disfluency_filter": False,
             "use_profanity_filter": False,
             "use_paragraph_splitter": True,
             "use_word_timestamp": True,
@@ -415,5 +416,4 @@ class ProgressService:
             total_sentences_completed=total_sentences_completed,
             average_score=None  # 별도 계산 필요
         )
-    
- 
+

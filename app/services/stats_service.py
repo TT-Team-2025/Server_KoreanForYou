@@ -1,208 +1,170 @@
 """
 통계 관련 서비스
 """
+from datetime import datetime, timedelta, date
+from typing import List, Dict, Set
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from typing import Dict, Any, Optional
+from sqlalchemy.orm import selectinload
 
-from app.models.user import User, UserStatus
-from app.models.learning import Chapter, ChapterFeedback
-from app.models.scenario import Scenario, ScenarioFeedback, ScenarioProgress
+from app.models.scenario import Scenario, ScenarioProgress, CompletionStatus
 from app.models.progress import UserProgress, SentenceProgress
+from app.schemas.stats import LearningSummaryResponse
 
 
 class StatsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_user_stats(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """사용자 전체 통계 조회"""
-        user_status_result = await self.db.execute(
-            select(UserStatus).where(UserStatus.user_id == user_id)
+    async def get_recent_scenarios(self, limit: int = 10) -> List[Dict[str, str]]:
+        """완료된 시나리오 목록 반환"""
+        result = await self.db.execute(
+            select(Scenario)
+            .join(ScenarioProgress)
+            .where(ScenarioProgress.completion_status == CompletionStatus.COMPLETED)
+            .order_by(ScenarioProgress.end_time.desc())
+            .options(selectinload(Scenario.scenario_progress))
+            .limit(limit)
         )
-        user_status = user_status_result.scalar_one_or_none()
+        scenarios = result.scalars().all()
 
-        if not user_status:
-            return None
+        scenario_list: List[Dict[str, str]] = []
+        for scenario in scenarios:
+            completed_progress = next(
+                (
+                    progress for progress in scenario.scenario_progress
+                    if progress.completion_status == CompletionStatus.COMPLETED
+                ),
+                None
+            )
+            if not completed_progress:
+                continue
 
-        # 추가 통계 계산
-        total_chapters_result = await self.db.execute(
-            select(func.count()).select_from(Chapter).where(Chapter.is_active == True)
-        )
-        total_chapters = total_chapters_result.scalar() or 0
+            progress_id = completed_progress.progress_id
+            end_time = completed_progress.end_time.date().isoformat() if completed_progress.end_time else None
 
-        completed_chapters_result = await self.db.execute(
-            select(func.count()).select_from(UserProgress).where(
-                UserProgress.user_id == user_id,
-                UserProgress.completion_rate >= 100
+            scenario_list.append(
+                {
+                    "progress_id": progress_id,
+                    "title": scenario.title,
+                    "description": scenario.description,
+                    "date": end_time,
+                    "completion_status": completed_progress.completion_status.value,
+                }
+            )
+
+        return scenario_list
+
+    async def get_learning_summary(self, user_id: int) -> LearningSummaryResponse:
+        """사용자 학습 요약 정보 조회"""
+        total_sentence_time_result = await self.db.execute(
+            select(func.coalesce(func.sum(SentenceProgress.total_time), 0)).where(
+                SentenceProgress.user_id == user_id,
+                SentenceProgress.total_time.isnot(None),
             )
         )
-        completed_chapters = completed_chapters_result.scalar() or 0
+        total_sentence_time = int(total_sentence_time_result.scalar() or 0)
 
-        total_sentences_result = await self.db.execute(
-            select(func.count()).select_from(SentenceProgress).where(
-                SentenceProgress.user_id == user_id
+        total_scenario_time_result = await self.db.execute(
+            select(func.coalesce(func.sum(ScenarioProgress.total_time), 0)).where(
+                ScenarioProgress.user_id == user_id,
+                ScenarioProgress.total_time.isnot(None),
             )
         )
-        total_sentences = total_sentences_result.scalar() or 0
+        total_scenario_time = int(total_scenario_time_result.scalar() or 0)
+
+        total_study_seconds = total_sentence_time + total_scenario_time
+        total_study_minutes = total_study_seconds // 60
+
+        total_turn_count_result = await self.db.execute(
+            select(func.coalesce(func.sum(ScenarioProgress.turn_count), 0)).where(
+                ScenarioProgress.user_id == user_id,
+                ScenarioProgress.turn_count.isnot(None),
+            )
+        )
+        ai_turn_count = int(total_turn_count_result.scalar() or 0)
 
         completed_sentences_result = await self.db.execute(
             select(func.count()).select_from(SentenceProgress).where(
                 SentenceProgress.user_id == user_id,
-                SentenceProgress.is_completed == True
+                SentenceProgress.is_completed == True,
             )
         )
-        completed_sentences = completed_sentences_result.scalar() or 0
+        completed_sentence_count = int(completed_sentences_result.scalar() or 0)
 
-        # 평균 점수 계산
-        avg_score_result = await self.db.execute(
-            select(func.avg(ChapterFeedback.total_score)).where(
-                ChapterFeedback.user_id == user_id
-            )
-        )
-        avg_score = avg_score_result.scalar()
-        
-        return {
-            "user_id": user_id,
-            "total_study_time": user_status.total_study_time,
-            "total_sentences_completed": user_status.total_sentences_completed,
-            "total_scenarios_completed": user_status.total_scenarios_completed,
-            "average_score": float(avg_score) if avg_score else None,
-            "current_access_days": user_status.current_access_days,
-            "longest_access_days": user_status.longest_access_days,
-            "last_study_date": user_status.last_study_date.isoformat() if user_status.last_study_date else None,
-            "total_chapters": total_chapters,
-            "completed_chapters": completed_chapters,
-            "total_sentences": total_sentences,
-            "completed_sentences": completed_sentences,
-            "completion_rate": (completed_chapters / total_chapters * 100) if total_chapters > 0 else 0
-        }
-    
-    async def get_chapter_stats(self, chapter_id: int) -> Optional[Dict[str, Any]]:
-        """챕터별 통계 조회"""
-        chapter_result = await self.db.execute(
-            select(Chapter).where(Chapter.chapter_id == chapter_id)
-        )
-        chapter = chapter_result.scalar_one_or_none()
-        if not chapter:
-            return None
+        learning_dates = await self._collect_learning_dates(user_id)
+        print(f"learning_dates: {learning_dates}")
+        continuous_learning_days = self._calculate_streak(learning_dates)
 
-        # 챕터를 학습한 사용자 수
-        total_users_result = await self.db.execute(
-            select(func.count()).select_from(UserProgress).where(
-                UserProgress.chapter_id == chapter_id
-            )
+        return LearningSummaryResponse(
+            total_study_minutes=total_study_minutes,
+            continuous_learning_days=continuous_learning_days,
+            ai_turn_count=ai_turn_count,
+            completed_sentence_count=completed_sentence_count,
         )
-        total_users = total_users_result.scalar() or 0
 
-        # 챕터를 완료한 사용자 수
-        completed_users_result = await self.db.execute(
-            select(func.count()).select_from(UserProgress).where(
-                UserProgress.chapter_id == chapter_id,
-                UserProgress.completion_rate >= 100
-            )
-        )
-        completed_users = completed_users_result.scalar() or 0
+    async def _collect_learning_dates(self, user_id: int) -> Set[date]:
+        """사용자가 학습 활동을 수행한 날짜 집합을 수집"""
+        dates: Set[date] = set()
 
-        # 평균 점수
-        avg_score_result = await self.db.execute(
-            select(func.avg(ChapterFeedback.total_score)).where(
-                ChapterFeedback.chapter_id == chapter_id
+        user_progress_dates_result = await self.db.execute(
+            select(func.date(UserProgress.last_access_at)).where(
+                UserProgress.user_id == user_id,
+                UserProgress.last_access_at.isnot(None),
             )
         )
-        avg_score = avg_score_result.scalar()
+        for row in user_progress_dates_result:
+            day = row[0]
+            if isinstance(day, date):
+                dates.add(day)
 
-        # 평균 완료 시간
-        avg_completion_time_result = await self.db.execute(
-            select(func.avg(ChapterFeedback.completion_time)).where(
-                ChapterFeedback.chapter_id == chapter_id
+        sentence_dates_result = await self.db.execute(
+            select(func.date(SentenceProgress.end_time)).where(
+                SentenceProgress.user_id == user_id,
+                SentenceProgress.end_time.isnot(None),
             )
         )
-        avg_completion_time = avg_completion_time_result.scalar()
-        
-        return {
-            "chapter_id": chapter_id,
-            "chapter_title": chapter.title,
-            "total_users": total_users,
-            "completed_users": completed_users,
-            "completion_rate": (completed_users / total_users * 100) if total_users > 0 else 0,
-            "average_score": float(avg_score) if avg_score else None,
-            "average_completion_time": float(avg_completion_time) if avg_completion_time else None,
-            "total_feedback_count": (await self.db.execute(
-                select(func.count()).select_from(ChapterFeedback).where(
-                    ChapterFeedback.chapter_id == chapter_id
+        for row in sentence_dates_result:
+            day = row[0]
+            if isinstance(day, date):
+                dates.add(day)
+
+        scenario_dates_result = await self.db.execute(
+            select(
+                func.date(
+                    func.coalesce(
+                        ScenarioProgress.end_time,
+                        ScenarioProgress.start_time,
+                    )
                 )
-            )).scalar() or 0
-        }
-    
-    async def get_scenario_stats(self, scenario_id: int) -> Optional[Dict[str, Any]]:
-        """시나리오별 통계 조회"""
-        scenario_result = await self.db.execute(
-            select(Scenario).where(Scenario.scenario_id == scenario_id)
-        )
-        scenario = scenario_result.scalar_one_or_none()
-        if not scenario:
-            return None
-
-        # 시나리오를 수행한 사용자 수
-        total_users_result = await self.db.execute(
-            select(func.count()).select_from(ScenarioProgress).where(
-                ScenarioProgress.scenario_id == scenario_id
-            )
-        )
-        total_users = total_users_result.scalar() or 0
-
-        # 시나리오를 완료한 사용자 수
-        completed_users_result = await self.db.execute(
-            select(func.count()).select_from(ScenarioProgress).where(
-                ScenarioProgress.scenario_id == scenario_id,
-                ScenarioProgress.completion_status == "완료"
-            )
-        )
-        completed_users = completed_users_result.scalar() or 0
-
-        # 평균 점수
-        avg_score_result = await self.db.execute(
-            select(func.avg(ScenarioFeedback.total_score)).select_from(ScenarioFeedback).join(
-                ScenarioProgress, ScenarioFeedback.log_id == ScenarioProgress.progress_id
             ).where(
-                ScenarioProgress.scenario_id == scenario_id
+                ScenarioProgress.user_id == user_id,
+                func.coalesce(
+                    ScenarioProgress.end_time,
+                    ScenarioProgress.start_time,
+                ).isnot(None),
             )
         )
-        avg_score = avg_score_result.scalar()
-        
-        return {
-            "scenario_id": scenario_id,
-            "scenario_title": scenario.title,
-            "total_users": total_users,
-            "completed_users": completed_users,
-            "completion_rate": (completed_users / total_users * 100) if total_users > 0 else 0,
-            "average_score": float(avg_score) if avg_score else None,
-            "total_feedback_count": (await self.db.execute(
-                select(func.count()).select_from(ScenarioFeedback).join(
-                    ScenarioProgress, ScenarioFeedback.log_id == ScenarioProgress.progress_id
-                ).where(
-                    ScenarioProgress.scenario_id == scenario_id
-                )
-            )).scalar() or 0
-        }
-    
-    async def get_api_usage_stats(self) -> Dict[str, Any]:
-        """API 사용량 통계 조회"""
-        # TODO: 실제 API 사용량 추적 구현
-        # 현재는 모의 데이터 반환
-        
-        return {
-            "tts_requests": 1250,
-            "stt_requests": 980,
-            "llm_requests": 450,
-            "total_requests": 2680,
-            "daily_average": 89.3,
-            "most_used_service": "TTS",
-            "usage_by_hour": {
-                "00": 12, "01": 8, "02": 5, "03": 3, "04": 2, "05": 4,
-                "06": 15, "07": 45, "08": 78, "09": 95, "10": 88, "11": 92,
-                "12": 85, "13": 90, "14": 95, "15": 88, "16": 82, "17": 75,
-                "18": 68, "19": 55, "20": 42, "21": 35, "22": 28, "23": 18
-            }
-        }
+        for row in scenario_dates_result:
+            day = row[0]
+            if isinstance(day, date):
+                dates.add(day)
+
+        return dates
+
+    def _calculate_streak(self, dates: Set[date]) -> int:
+        """학습 날짜 집합을 기반으로 연속 학습 일수 계산"""
+        if not dates:
+            return 0
+
+        today = datetime.utcnow().date()
+        reference = today if today in dates else max(dates)
+
+        streak = 0
+        current = reference
+        while current in dates:
+            streak += 1
+            current -= timedelta(days=1)
+
+        return streak

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 """
 시나리오 관련 스키마 (DTO)
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
@@ -21,6 +23,7 @@ class StartScenarioResponse(BaseModel):
     assistant: str
     assistant_id: str
     tts_filename: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일명")
+    tts_url: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일 URL")
 
 
 class SendMessageRequest(BaseModel):
@@ -39,6 +42,15 @@ class SendVoiceMessageResponse(BaseModel):
     assistant: str
     user_text: str
     tts_filename: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일명")
+    tts_url: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일 URL")
+    pronunciation_score: Optional[float] = Field(None, description="발음 정확도 점수 (0-100)")
+    fluency_score: Optional[float] = Field(None, description="유창성 점수 (0-100)")
+    grammar_score: Optional[float] = Field(None, description="문법 정확성 점수 (0-100)")
+    overall_score: Optional[float] = Field(None, description="종합 점수 (0-100)")
+    evaluation_details: Optional[Dict[str, Any]] = Field(
+        None,
+        description="세부 평가 정보 (발음/유창성/문법 분석 결과)",
+    )
 
 
 class EndScenarioRequest(BaseModel):
@@ -53,6 +65,7 @@ class EndScenarioResponse(BaseModel):
     end_time: Optional[str] = None
     turn_count: int
     total_time: Optional[int] = None
+    feedback: Optional["ScenarioFeedbackResponse"] = None
 
 
 class CompletedScenarioItem(BaseModel):
@@ -83,10 +96,9 @@ class ScenarioFeedbackResponse(BaseModel):
     pronunciation_score: Optional[int] = None
     accuracy_score: Optional[int] = None
     fluency_score: Optional[int] = None
-    completeness_score: Optional[int] = None
     total_score: Optional[int] = None
     comment: Optional[str] = None
-    detail_comment: Optional[List[str]] = None
+    detail_comment: Optional[Any] = None
     created_at: datetime
     
     class Config:
@@ -111,4 +123,24 @@ class UserTurnCountResponse(BaseModel):
     user_id: int
     total_turn_count: int
     scenario_count: int  # 시나리오 개수
+
+
+EndScenarioResponse.model_rebuild(_types_namespace=globals())
+
+
+class ScenarioSessionSummaryResponse(BaseModel):
+    """시나리오 단일 세션 요약 응답"""
+    progress_id: int
+    thread_id: Optional[str] = None
+    scenario_title: Optional[str] = None
+    completion_status: Optional[str] = None
+    turn_count: Optional[int] = None
+    total_time: Optional[int] = None
+    total_score: Optional[int] = None
+    pronunciation_score: Optional[int] = None
+    fluency_score: Optional[int] = None
+    grammar_score: Optional[int] = None
+    ai_comment: Optional[str] = None
+    detail_comment: Optional[Any] = None
+    created_at: Optional[datetime] = None
 

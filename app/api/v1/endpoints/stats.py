@@ -5,97 +5,45 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import oauth2_scheme
+from app.core.security import get_current_user_id, oauth2_scheme
 from app.schemas.common import BaseResponse
+from app.schemas.stats import LearningSummaryResponse, RecentScenarioItem
 from app.services.stats_service import StatsService
 
 router = APIRouter()
 
 
-@router.get("/users/{user_id}", response_model=BaseResponse)
-async def get_user_stats(
-    user_id: int,
-    token: str = Depends(oauth2_scheme),
+@router.get("/scenarios/recent", response_model=BaseResponse)
+async def get_recent_scenarios(
+    limit: int = 10,
     db: AsyncSession = Depends(get_db)
 ):
-    """사용자 전체 통계 조회"""
+    """최신 시나리오 목록 조회"""
     stats_service = StatsService(db)
+    scenario_list = await stats_service.get_recent_scenarios(limit)
 
-    user_stats = await stats_service.get_user_stats(user_id)
-
-    if not user_stats:
+    if not scenario_list:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="사용자 통계를 찾을 수 없습니다"
+            detail="시나리오를 찾을 수 없습니다"
         )
+
+    items = [RecentScenarioItem(**item) for item in scenario_list]
 
     return BaseResponse(
         success=True,
-        message="사용자 통계를 조회했습니다",
-        data=user_stats
+        message="시나리오 목록을 조회했습니다",
+        data=[item.model_dump() for item in items],
     )
 
 
-@router.get("/chapters/{chapter_id}", response_model=BaseResponse)
-async def get_chapter_stats(
-    chapter_id: int,
+@router.get("/learning/summary", response_model=LearningSummaryResponse)
+async def get_learning_summary(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
 ):
-    """챕터별 통계 조회"""
+    """현재 사용자 학습 요약 정보 조회"""
+    user_id = get_current_user_id(token)
     stats_service = StatsService(db)
+    return await stats_service.get_learning_summary(user_id)
 
-    chapter_stats = await stats_service.get_chapter_stats(chapter_id)
-
-    if not chapter_stats:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="챕터 통계를 찾을 수 없습니다"
-        )
-
-    return BaseResponse(
-        success=True,
-        message="챕터 통계를 조회했습니다",
-        data=chapter_stats
-    )
-
-
-@router.get("/scenarios/{scenario_id}", response_model=BaseResponse)
-async def get_scenario_stats(
-    scenario_id: int,
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
-):
-    """시나리오별 통계 조회"""
-    stats_service = StatsService(db)
-
-    scenario_stats = await stats_service.get_scenario_stats(scenario_id)
-
-    if not scenario_stats:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="시나리오 통계를 찾을 수 없습니다"
-        )
-
-    return BaseResponse(
-        success=True,
-        message="시나리오 통계를 조회했습니다",
-        data=scenario_stats
-    )
-
-
-@router.get("/api", response_model=BaseResponse)
-async def get_api_usage_stats(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
-):
-    """API 사용량 통계 조회 (TTS/STT/LLM)"""
-    stats_service = StatsService(db)
-
-    api_stats = await stats_service.get_api_usage_stats()
-
-    return BaseResponse(
-        success=True,
-        message="API 사용량 통계를 조회했습니다",
-        data=api_stats
-    )

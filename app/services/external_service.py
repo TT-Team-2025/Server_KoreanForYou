@@ -13,6 +13,7 @@ import grpc
 import logging
 import json
 import asyncio
+import tempfile
 from dotenv import load_dotenv
 
 # .env 파일 로드 (최상단에서 한 번만 실행)
@@ -20,6 +21,8 @@ load_dotenv()
 
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 import httpx
 import uuid
 from fastapi import UploadFile
@@ -89,6 +92,103 @@ class ExternalService:
             CLOVA_VOICE_CLIENT_SECRET
         )
         self.llm_service = LLMService(db)
+        self.s3_bucket = os.environ.get("S3_BUCKET_NAME")
+        self.s3_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+        self.s3_presign_expiration = int(os.environ.get("S3_PRESIGNED_EXPIRATION", "3600"))
+        self.s3_client = None
+        if self.s3_bucket:
+            try:
+                self.s3_client = boto3.client(
+                    "s3",
+                    region_name=self.s3_region,
+                    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+                    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                )
+            except Exception as exc:
+                logger.warning("S3 클라이언트 초기화 실패: %s", exc)
+                self.s3_client = None
+
+    @property
+    def s3_available(self) -> bool:
+        return self.s3_client is not None and bool(self.s3_bucket)
+
+    def _build_s3_key(self, prefix: str, extension: str) -> str:
+        safe_prefix = prefix.strip("/ ")
+        return f"{safe_prefix}/{uuid.uuid4().hex}{extension}"
+
+    async def _upload_bytes_to_s3(
+        self,
+        data: bytes,
+        *,
+        prefix: str,
+        extension: str,
+        content_type: str,
+    ) -> Optional[str]:
+        if not self.s3_available:
+            return None
+
+        key = self._build_s3_key(prefix, extension)
+
+        def _upload():
+            self.s3_client.put_object(
+                Bucket=self.s3_bucket,
+                Key=key,
+                Body=data,
+                ContentType=content_type,
+            )
+
+        try:
+            await asyncio.to_thread(_upload)
+            return key
+        except (BotoCoreError, ClientError, ValueError) as exc:
+            logger.error("S3 업로드 실패: %s", exc)
+            return None
+
+    async def generate_presigned_url(
+        self,
+        key: str,
+        expires_in: Optional[int] = None,
+    ) -> Optional[str]:
+        if not self.s3_available:
+            return None
+
+        expiration = expires_in or self.s3_presign_expiration
+
+        def _generate():
+            return self.s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.s3_bucket, "Key": key},
+                ExpiresIn=expiration,
+            )
+
+        try:
+            return await asyncio.to_thread(_generate)
+        except (BotoCoreError, ClientError, ValueError) as exc:
+            logger.error("S3 presigned URL 생성 실패: %s", exc)
+            return None
+
+    async def save_audio_to_s3(
+        self,
+        data: bytes,
+        *,
+        prefix: str,
+        extension: str = ".mp3",
+        content_type: str = "audio/mpeg",
+        create_url: bool = False,
+    ) -> Optional[Dict[str, Optional[str]]]:
+        key = await self._upload_bytes_to_s3(
+            data,
+            prefix=prefix,
+            extension=extension,
+            content_type=content_type,
+        )
+        if not key:
+            return None
+
+        response = {"key": key, "url": None}
+        if create_url:
+            response["url"] = await self.generate_presigned_url(key)
+        return response
 
     ##### 이 함수는 음성파일을 인자로 받아 stt 작업 수행하고 결과를 반환하는 함수 #####
     async def transcribe_file(self, file: UploadFile, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -105,32 +205,50 @@ class ExternalService:
                 "model_name": "sommers",
                 "language": "ko",
                 "use_itn": True,
-                "use_disfluency_filter": True,
+                "use_disfluency_filter": False,
                 "use_profanity_filter": False,
                 "use_paragraph_splitter": True,
                 "use_word_timestamp": True,
             }
         
-        # 파일을 디스크에 저장 -> 추후 s3 연동 시 삭제 필요
-        upload_dir = "uploads"
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, file.filename)
+        temp_path: Optional[str] = None
+        s3_record: Optional[Dict[str, Optional[str]]] = None
         try:
-            # 파일 내용을 저장
-            with open(file_path, "wb") as f:
-                content = await file.read()
-                f.write(content)
-            # RTZR API 호출
+            await file.seek(0)
+            data = await file.read()
+            if not data:
+                raise RuntimeError("업로드된 음성 파일이 비어 있습니다.")
+
+            extension = os.path.splitext(file.filename or "")[1] or ".mp3"
+            content_type = file.content_type or "application/octet-stream"
+
+            if self.s3_available:
+                s3_record = await self.save_audio_to_s3(
+                    data,
+                    prefix="scenario/stt-inputs",
+                    extension=extension,
+                    content_type=content_type,
+                )
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp_file:
+                tmp_file.write(data)
+                temp_path = tmp_file.name
+
             result = await asyncio.to_thread(
                 self.rtzr_client.transcribe_file,
-                file_path,
+                temp_path,
                 config
             )
+            if s3_record and s3_record.get("key"):
+                metadata = result.setdefault("metadata", {})
+                metadata["s3_key"] = s3_record["key"]
+                if s3_record.get("url"):
+                    metadata["s3_url"] = s3_record["url"]
             return result
         finally:
-            # 임시 파일 삭제
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+            await file.seek(0)
 
     ##### TTS (Text-to-Speech) 관련 메서드들 #####
     async def text_to_speech(

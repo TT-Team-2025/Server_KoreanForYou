@@ -7,3 +7,4 @@ from .learning import *
 from .progress import *
 from .scenario_dto import *
 from .common import *
+from .stats import *
