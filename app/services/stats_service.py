@@ -2,7 +2,7 @@
 통계 관련 서비스
 """
 from datetime import datetime, timedelta, date
-from typing import List, Dict, Set, Any
+from typing import List, Dict, Set, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -100,6 +100,130 @@ class StatsService:
             )
 
         return feedback_list
+
+    async def get_chapter_feedback_detail(
+        self,
+        user_id: int,
+        feedback_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """단일 챕터 피드백 상세 조회"""
+        result = await self.db.execute(
+            select(ChapterFeedback)
+            .where(
+                ChapterFeedback.feedback_id == feedback_id,
+                ChapterFeedback.user_id == user_id,
+            )
+            .options(selectinload(ChapterFeedback.chapter))
+        )
+        feedback = result.scalar_one_or_none()
+
+        if not feedback:
+            return None
+
+        total_sentences = feedback.total_sentences or 0
+        completed_sentences = feedback.completed_sentences or 0
+        completion_rate = (
+            round((completed_sentences / total_sentences) * 100, 2)
+            if total_sentences > 0
+            else 0.0
+        )
+        chapter = feedback.chapter
+
+        return {
+            "feedback_id": feedback.feedback_id,
+            "chapter_id": feedback.chapter_id,
+            "chapter_title": chapter.title if chapter else None,
+            "total_sentences": total_sentences,
+            "completed_sentences": completed_sentences,
+            "completion_rate": completion_rate,
+            "total_score": feedback.total_score,
+            "pronunciation_score": feedback.pronunciation_score,
+            "accuracy_score": feedback.accuracy_score,
+            "summary_feedback": feedback.summary_feedback,
+            "weaknesses": feedback.weaknesses,
+            "total_time": feedback.total_time,
+            "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
+        }
+
+    async def get_recent_learning_activities(
+        self,
+        user_id: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """시나리오와 챕터 학습 기록을 통합하여 최신순으로 반환"""
+        activities: List[Dict[str, Any]] = []
+
+        scenario_result = await self.db.execute(
+            select(ScenarioProgress)
+            .options(
+                selectinload(ScenarioProgress.scenario),
+                selectinload(ScenarioProgress.scenario_feedback),
+            )
+            .where(
+                ScenarioProgress.user_id == user_id,
+                ScenarioProgress.completion_status == CompletionStatus.COMPLETED,
+            )
+            .order_by(ScenarioProgress.end_time.desc())
+            .limit(limit)
+        )
+        scenario_progresses = scenario_result.scalars().all()
+
+        for progress in scenario_progresses:
+            end_time = progress.end_time or progress.start_time
+            feedback = progress.scenario_feedback[0] if progress.scenario_feedback else None
+
+            activities.append(
+                {
+                    "activity_type": "scenario",
+                    "activity_id": progress.progress_id,
+                    "title": progress.scenario.title if progress.scenario else None,
+                    "description": progress.scenario.description if progress.scenario else None,
+                    "date": end_time.isoformat() if end_time else None,
+                    "total_score": feedback.total_score if feedback else None,
+                    "completion_status": progress.completion_status.value if progress.completion_status else None,
+                    "_sort_key": end_time or datetime.min,
+                }
+            )
+
+        chapter_result = await self.db.execute(
+            select(ChapterFeedback)
+            .where(ChapterFeedback.user_id == user_id)
+            .order_by(ChapterFeedback.created_at.desc())
+            .options(selectinload(ChapterFeedback.chapter))
+            .limit(limit)
+        )
+        chapter_feedbacks = chapter_result.scalars().all()
+
+        for feedback in chapter_feedbacks:
+            total_sentences = feedback.total_sentences or 0
+            completed_sentences = feedback.completed_sentences or 0
+            completion_rate = (
+                round((completed_sentences / total_sentences) * 100, 2)
+                if total_sentences > 0
+                else 0.0
+            )
+            created_at = feedback.created_at
+            chapter = feedback.chapter
+
+            activities.append(
+                {
+                    "activity_type": "chapter",
+                    "activity_id": feedback.feedback_id,
+                    "title": chapter.title if chapter else None,
+                    "description": chapter.description if chapter else None,
+                    "date": created_at.isoformat() if created_at else None,
+                    "total_score": feedback.total_score,
+                    "_sort_key": created_at or datetime.min,
+                }
+            )
+
+        activities.sort(key=lambda item: item.get("_sort_key") or datetime.min, reverse=True)
+
+        trimmed = activities[:limit]
+        for item in trimmed:
+            item.pop("_sort_key", None)
+
+        return trimmed
 
     async def get_learning_summary(self, user_id: int) -> LearningSummaryResponse:
         """사용자 학습 요약 정보 조회"""

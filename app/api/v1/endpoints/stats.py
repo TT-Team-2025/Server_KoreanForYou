@@ -11,6 +11,8 @@ from app.schemas.stats import (
     LearningSummaryResponse,
     RecentScenarioItem,
     ChapterFeedbackBrief,
+    ChapterFeedbackDetail,
+    RecentLearningActivity,
 )
 from app.services.stats_service import StatsService
 
@@ -68,6 +70,52 @@ async def get_recent_chapter_feedbacks(
     return BaseResponse(
         success=True,
         message="최근 챕터 피드백을 조회했습니다",
+        data=[item.model_dump() for item in items],
+    )
+
+
+@router.get("/chapters/feedbacks/{feedback_id}", response_model=BaseResponse)
+async def get_chapter_feedback_detail(
+    feedback_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """단일 챕터 피드백 상세 조회"""
+    user_id = get_current_user_id(token)
+    stats_service = StatsService(db)
+    detail = await stats_service.get_chapter_feedback_detail(user_id, feedback_id)
+
+    if not detail:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="챕터 피드백을 찾을 수 없습니다",
+        )
+
+    item = ChapterFeedbackDetail(**detail)
+
+    return BaseResponse(
+        success=True,
+        message="챕터 피드백을 조회했습니다",
+        data=item.model_dump(),
+    )
+
+
+@router.get("/learning/recent", response_model=BaseResponse)
+async def get_recent_learning_activities(
+    limit: int = 10,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """시나리오 및 챕터 최근 학습 기록 통합 조회"""
+    user_id = get_current_user_id(token)
+    stats_service = StatsService(db)
+    activities = await stats_service.get_recent_learning_activities(user_id, limit)
+
+    items = [RecentLearningActivity(**activity) for activity in activities]
+
+    return BaseResponse(
+        success=True,
+        message="최근 학습 기록을 조회했습니다",
         data=[item.model_dump() for item in items],
     )
 
