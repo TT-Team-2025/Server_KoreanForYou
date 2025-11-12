@@ -344,7 +344,7 @@ class ProgressService:
                 progress.start_time = session_start
             progress.end_time = None
             progress.total_time = None
-            progress.is_completed = total_word_count > 0 and correct_word_count == total_word_count
+            progress.is_completed = total_word_count > 0
 
             completion_rate, _, _ = await self._compute_chapter_completion(user_id, sentence.chapter_id)
             chapter_progress_result = await self.db.execute(

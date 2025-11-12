@@ -2,13 +2,14 @@
 통계 관련 서비스
 """
 from datetime import datetime, timedelta, date
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.models.scenario import Scenario, ScenarioProgress, CompletionStatus
+from app.models.learning import ChapterFeedback
 from app.models.progress import UserProgress, SentenceProgress
 from app.schemas.stats import LearningSummaryResponse
 
@@ -24,7 +25,11 @@ class StatsService:
             .join(ScenarioProgress)
             .where(ScenarioProgress.completion_status == CompletionStatus.COMPLETED)
             .order_by(ScenarioProgress.end_time.desc())
-            .options(selectinload(Scenario.scenario_progress))
+            .options(
+                selectinload(Scenario.scenario_progress).selectinload(
+                    ScenarioProgress.scenario_feedback
+                )
+            )
             .limit(limit)
         )
         scenarios = result.scalars().all()
@@ -43,6 +48,7 @@ class StatsService:
 
             progress_id = completed_progress.progress_id
             end_time = completed_progress.end_time.date().isoformat() if completed_progress.end_time else None
+            feedback = completed_progress.scenario_feedback[0] if completed_progress.scenario_feedback else None
 
             scenario_list.append(
                 {
@@ -51,10 +57,49 @@ class StatsService:
                     "description": scenario.description,
                     "date": end_time,
                     "completion_status": completed_progress.completion_status.value,
+                    "total_score": feedback.total_score if feedback else None,
                 }
             )
 
         return scenario_list
+
+    async def get_recent_chapter_feedbacks(
+        self,
+        user_id: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """최근 완료한 챕터 학습 피드백 목록"""
+        result = await self.db.execute(
+            select(ChapterFeedback)
+            .where(ChapterFeedback.user_id == user_id)
+            .order_by(ChapterFeedback.created_at.desc())
+            .options(selectinload(ChapterFeedback.chapter))
+            .limit(limit)
+        )
+        feedbacks = list(result.scalars().all())
+
+        unique_map: Dict[int, ChapterFeedback] = {}
+        for fb in feedbacks:
+            if fb.chapter_id not in unique_map:
+                unique_map[fb.chapter_id] = fb
+
+        feedback_list: List[Dict[str, Any]] = []
+        for fb in unique_map.values():
+            chapter = fb.chapter
+            completed_date = fb.created_at.date().isoformat() if fb.created_at else None
+            feedback_list.append(
+                {
+                    "feedback_id": fb.feedback_id,
+                    "chapter_id": fb.chapter_id,
+                    "chapter_title": chapter.title if chapter else None,
+                    "completed_sentences": fb.completed_sentences,
+                    "total_sentences": fb.total_sentences,
+                    "total_score": fb.total_score,
+                    "completed_date": completed_date,
+                }
+            )
+
+        return feedback_list
 
     async def get_learning_summary(self, user_id: int) -> LearningSummaryResponse:
         """사용자 학습 요약 정보 조회"""
