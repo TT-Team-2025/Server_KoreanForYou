@@ -35,14 +35,13 @@ class SendMessageRequest(BaseModel):
 class SendMessageResponse(BaseModel):
     """메시지 전송 응답"""
     assistant: str
+    tts_filename: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일명")
+    tts_url: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일 URL")
 
 
 class SendVoiceMessageResponse(BaseModel):
-    """음성 메시지 전송 응답 (STT + LLM + TTS)"""
-    assistant: str
+    """음성 메시지 전송 응답 (STT + 음성 평가)"""
     user_text: str
-    tts_filename: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일명")
-    tts_url: Optional[str] = Field(None, description="AI 응답 TTS 오디오 파일 URL")
     pronunciation_score: Optional[float] = Field(None, description="발음 정확도 점수 (0-100)")
     fluency_score: Optional[float] = Field(None, description="유창성 점수 (0-100)")
     grammar_score: Optional[float] = Field(None, description="문법 정확성 점수 (0-100)")
