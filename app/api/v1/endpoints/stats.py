@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user_id, oauth2_scheme
 from app.schemas.common import BaseResponse
-from app.schemas.stats import LearningSummaryResponse, RecentScenarioItem
+from app.schemas.stats import (
+    LearningSummaryResponse,
+    RecentScenarioItem,
+    ChapterFeedbackBrief,
+)
 from app.services.stats_service import StatsService
 
 router = APIRouter()
@@ -46,4 +50,24 @@ async def get_learning_summary(
     user_id = get_current_user_id(token)
     stats_service = StatsService(db)
     return await stats_service.get_learning_summary(user_id)
+
+
+@router.get("/chapters/recent", response_model=BaseResponse)
+async def get_recent_chapter_feedbacks(
+    limit: int = 10,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """최근 완료한 챕터 피드백 목록 조회"""
+    user_id = get_current_user_id(token)
+    stats_service = StatsService(db)
+    feedbacks = await stats_service.get_recent_chapter_feedbacks(user_id, limit)
+
+    items = [ChapterFeedbackBrief(**fb) for fb in feedbacks]
+
+    return BaseResponse(
+        success=True,
+        message="최근 챕터 피드백을 조회했습니다",
+        data=[item.model_dump() for item in items],
+    )
 

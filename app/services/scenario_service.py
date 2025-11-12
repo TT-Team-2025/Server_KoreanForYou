@@ -781,8 +781,8 @@ class ScenarioService:
             "log_id": feedback_record.log_id,
             "pronunciation_score": feedback_record.pronunciation_score,
             "fluency_score": feedback_record.fluency_score,
-            "grammar_score": feedback_record.accuracy_score,
-            "overall_score": feedback_record.total_score,
+            "accuracy_score": feedback_record.accuracy_score,
+            "total_score": feedback_record.total_score,
             "comment": feedback_record.comment,
             "detail_comment": detail_comment,
             "created_at": feedback_record.created_at.isoformat() if feedback_record.created_at else None,
@@ -797,12 +797,13 @@ class ScenarioService:
         pronunciation_score = metrics_summary.get("pronunciation_score")
         fluency_score = metrics_summary.get("fluency_score")
         grammar_score = metrics_summary.get("grammar_score")
+        print(grammar_score)
         overall_score = metrics_summary.get("overall_score")
 
         rounded_pronunciation = self._round_score(pronunciation_score)
         rounded_fluency = self._round_score(fluency_score)
         rounded_grammar = self._round_score(grammar_score) if grammar_score is not None else 0
-
+        print(rounded_grammar)
         if overall_score is None:
             available_scores = [
                 score for score in (rounded_pronunciation, rounded_fluency, rounded_grammar) if score is not None
@@ -1083,7 +1084,7 @@ class ScenarioService:
     ) -> Dict[str, Any]:
         if not transcript:
             return {
-                "grammar_score": None,
+                "grammar_score": 0,
                 "mistakes": [],
                 "suggestions": [],
             }
@@ -1137,7 +1138,7 @@ class ScenarioService:
         except Exception as exc:
             print(f"[GrammarEvaluation] OpenAI 호출 실패(thread={thread_id}): {exc}")
             return {
-                "grammar_score": None,
+                "grammar_score": 0,
                 "mistakes": [],
                 "suggestions": [],
                 "error": str(exc),
@@ -1146,17 +1147,21 @@ class ScenarioService:
         parsed = self._parse_llm_json(content)
         if not parsed:
             return {
-                "grammar_score": None,
+                "grammar_score": 0,
                 "mistakes": [],
                 "suggestions": [],
                 "raw_response": content,
             }
 
-        grammar_score = parsed.get("grammar_score") or parsed.get("score")
+        if "grammar_score" in parsed:
+            grammar_score_raw = parsed.get("grammar_score")
+        else:
+            grammar_score_raw = parsed.get("score")
+
         try:
-            grammar_score = self._clamp_score(float(grammar_score))
+            grammar_score = self._clamp_score(float(grammar_score_raw))
         except (TypeError, ValueError):
-            grammar_score = None
+            grammar_score = 0
 
         mistakes = parsed.get("mistakes") or parsed.get("errors") or []
         suggestions = parsed.get("suggestions") or parsed.get("recommendations") or []
