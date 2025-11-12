@@ -82,7 +82,7 @@ async def start_session(
         try:
             tts_audio = await external_service.text_to_speech(
                 text=assistant_text,
-                speaker="nara",  # 기본 음성
+                speaker="nara_call",  # 기본 음성
                 speed=1,
                 volume=0,
                 pitch=0,
@@ -125,9 +125,48 @@ async def start_session(
 @router.post("/message", response_model=SendMessageResponse) #메세지 보내는 api text형식
 async def send_message(req: SendMessageRequest, db: AsyncSession = Depends(get_db)):
     service = ScenarioService(db)
+    external_service = ExternalService(db)
     try:
         result = await service.send_message(thread_id=req.thread_id, user_text=req.message)
-        return SendMessageResponse(**result)
+        assistant_text = result["assistant"]
+
+        tts_filename = None
+        tts_url = None
+        try:
+            tts_audio = await external_service.text_to_speech(
+                text=assistant_text,
+                speaker="nara_call",
+                speed=1,
+                volume=0,
+                pitch=0,
+                emotion="neutral",
+                format="mp3",
+            )
+            s3_result = await external_service.save_audio_to_s3(
+                tts_audio,
+                prefix="scenario/tts-responses",
+                extension=".mp3",
+                content_type="audio/mpeg",
+                create_url=True,
+            )
+            if s3_result:
+                tts_filename = s3_result["key"]
+                tts_url = s3_result.get("url")
+            else:
+                os.makedirs(TTS_UPLOAD_DIR, exist_ok=True)
+                filename = f"{uuid.uuid4()}.mp3"
+                file_path = os.path.join(TTS_UPLOAD_DIR, filename)
+                with open(file_path, "wb") as f:
+                    f.write(tts_audio)
+                tts_filename = filename
+        except Exception as e:
+            print(f"TTS 변환 실패: {str(e)}")
+
+        return SendMessageResponse(
+            assistant=assistant_text,
+            tts_filename=tts_filename,
+            tts_url=tts_url,
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except TimeoutError as e:
@@ -155,7 +194,7 @@ async def end_scenario(req: EndScenarioRequest, db: AsyncSession = Depends(get_d
         )
 
 
-@router.post("/message/voice", response_model=SendVoiceMessageResponse) # 음성 파일 → STT + LLM 동시 처리
+@router.post("/message/voice", response_model=SendVoiceMessageResponse) # 음성 파일 → STT 처리
 async def send_voice_message(
     thread_id: str = Form(..., description="OpenAI Thread ID"),
     file: UploadFile = File(..., description="음성 파일"),
@@ -163,7 +202,8 @@ async def send_voice_message(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    음성 파일을 업로드하여 STT 변환 후 AI 응답 받기
+    음성 파일을 업로드하여 STT 변환과 음성 평가 결과를 즉시 반환합니다.
+    이후 AI 응답이 필요하면 /api/scenarios/message 엔드포인트를 호출하세요.
     
     지원 형식: mp4, m4a, mp3, amr, flac, wav
     """
@@ -247,49 +287,8 @@ async def send_voice_message(
             evaluation=evaluation,
         )
 
-        # 5) 변환된 텍스트로 AI 응답 받기
-        result = await scenario_service.send_message(thread_id=thread_id, user_text=user_text)
-        assistant_text = result["assistant"]
-        
-        # 6) AI 응답을 TTS로 변환하고 파일로 저장
-        tts_filename = None
-        tts_url = None
-        try:
-            tts_audio = await external_service.text_to_speech(
-                text=assistant_text,
-                speaker="nara",  # 기본 음성
-                speed=1,
-                volume=0,
-                pitch=0,
-                emotion="neutral",
-                format="mp3"
-            )
-            s3_result = await external_service.save_audio_to_s3(
-                tts_audio,
-                prefix="scenario/tts-responses",
-                extension=".mp3",
-                content_type="audio/mpeg",
-                create_url=True,
-            )
-            if s3_result:
-                tts_filename = s3_result["key"]
-                tts_url = s3_result.get("url")
-            else:
-                os.makedirs(TTS_UPLOAD_DIR, exist_ok=True)
-                filename = f"{uuid.uuid4()}.mp3"
-                file_path = os.path.join(TTS_UPLOAD_DIR, filename)
-                with open(file_path, "wb") as f:
-                    f.write(tts_audio)
-                tts_filename = filename
-        except Exception as e:
-            # TTS 실패해도 텍스트 응답은 반환
-            print(f"TTS 변환 실패: {str(e)}")
-        
         return SendVoiceMessageResponse(
-            assistant=assistant_text,
             user_text=user_text,
-            tts_filename=tts_filename,
-            tts_url=tts_url,
             pronunciation_score=evaluation.get("pronunciation_score"),
             fluency_score=evaluation.get("fluency_score"),
             grammar_score=evaluation.get("grammar_score"),
