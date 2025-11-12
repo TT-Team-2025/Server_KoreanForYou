@@ -56,3 +56,8 @@ class RecentLearningActivity(BaseModel):
     total_score: Optional[int] = None
     completion_status: Optional[str] = None
 
+
+class LearningDatesByMonth(BaseModel):
+    month: str
+    dates: List[str]
+

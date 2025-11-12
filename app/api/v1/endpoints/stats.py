@@ -13,6 +13,7 @@ from app.schemas.stats import (
     ChapterFeedbackBrief,
     ChapterFeedbackDetail,
     RecentLearningActivity,
+    LearningDatesByMonth,
 )
 from app.services.stats_service import StatsService
 
@@ -116,6 +117,24 @@ async def get_recent_learning_activities(
     return BaseResponse(
         success=True,
         message="최근 학습 기록을 조회했습니다",
+        data=[item.model_dump() for item in items],
+    )
+
+
+@router.get("/learning/dates", response_model=BaseResponse)
+async def get_learning_dates(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """사용자가 학습한 날짜 목록 조회"""
+    user_id = get_current_user_id(token)
+    stats_service = StatsService(db)
+    dates = await stats_service.get_learning_dates(user_id)
+    items = [LearningDatesByMonth(**item) for item in dates]
+
+    return BaseResponse(
+        success=True,
+        message="학습한 날짜 목록을 조회했습니다",
         data=[item.model_dump() for item in items],
     )
 

@@ -225,6 +225,22 @@ class StatsService:
 
         return trimmed
 
+    async def get_learning_dates(self, user_id: int) -> List[Dict[str, Any]]:
+        """사용자가 학습한 날짜 목록을 월별로 그룹화"""
+        dates = await self._collect_learning_dates(user_id)
+        if not dates:
+            return []
+
+        grouped: Dict[str, List[str]] = {}
+        for day in sorted(dates):
+            month_key = day.strftime("%Y-%m")
+            grouped.setdefault(month_key, []).append(day.isoformat())
+
+        return [
+            {"month": month, "dates": date_list}
+            for month, date_list in sorted(grouped.items(), reverse=True)
+        ]
+
     async def get_learning_summary(self, user_id: int) -> LearningSummaryResponse:
         """사용자 학습 요약 정보 조회"""
         total_sentence_time_result = await self.db.execute(
