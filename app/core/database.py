@@ -44,6 +44,11 @@ async def init_db():
             # 모든 테이블 생성
             await conn.run_sync(Base.metadata.create_all)
         print("[DATABASE] Database initialized successfully")
+
+        # 초기 데이터 삽입
+        from app.core.seed import seed_all
+        async with SessionLocal() as session:
+            await seed_all(session)
     except Exception as e:
         print(f"[DATABASE] Warning: Failed to initialize database: {e}")
         print("[DATABASE] Server will continue, but database features may not work")
