@@ -328,16 +328,12 @@ class FeedbackService:
                 # LLM 서비스 실패 시 무시하고 계속 진행
                 pass
 
-        # 피드백 생성
+        # 피드백 생성 (word_timestamps와 점수는 sentence_progress에서 가져오므로 저장하지 않음)
         feedback = SentenceFeedback(
             user_id=user_id,
             sentence_id=sentence_id,
             sentence_progress_id=sentence_progress_id,
-            weaknesses=weaknesses if weaknesses else None,
-            word_timestamps=word_timestamps if word_timestamps else None,
-            pronunciation_score=pronunciation_score,
-            accuracy_score=accuracy_score,
-            overall_score=overall_score
+            weaknesses=weaknesses if weaknesses else None
         )
         self.db.add(feedback)
 
