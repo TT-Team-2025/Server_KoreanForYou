@@ -37,8 +37,12 @@ target_metadata = Base.metadata
 
 
 def get_url():
-    """데이터베이스 URL 가져오기"""
-    return settings.DATABASE_URL
+    """데이터베이스 URL 가져오기 (동기 드라이버로 변환)"""
+    # Alembic은 동기 엔진을 사용하므로 asyncpg를 psycopg2로 변환
+    url = settings.DATABASE_URL
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+    return url
 
 
 def run_migrations_offline() -> None:

@@ -22,9 +22,14 @@ from app.core.database import Base
 
 async def create_migration_async(message: str = None):
     """새 마이그레이션 파일 생성 (autogenerate) - 비동기"""
-    cfg = Config()
-    cfg.set_main_option("script_location", "alembic")
-    cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    # alembic.ini 파일 경로 지정
+    alembic_ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+    cfg = Config(alembic_ini_path)
+    # script_location은 alembic.ini에서 자동으로 읽어옴
+    # DATABASE_URL은 alembic/env.py의 get_url()에서 settings를 통해 가져옴
+    # 하지만 autogenerate를 위해 명시적으로 설정
+    sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    cfg.set_main_option("sqlalchemy.url", sync_url)
     
     # 모든 모델 import (autogenerate가 변경사항을 감지하도록)
     import app.models  # noqa
@@ -47,9 +52,13 @@ async def upgrade_migration_async(revision: str = "head"):
     from alembic.script import ScriptDirectory
     from alembic.runtime.migration import MigrationContext
     
-    cfg = Config()
-    cfg.set_main_option("script_location", "alembic")
-    cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    # alembic.ini 파일 경로 지정
+    alembic_ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+    cfg = Config(alembic_ini_path)
+    # script_location은 alembic.ini에서 자동으로 읽어옴
+    # DATABASE_URL은 alembic/env.py의 get_url()에서 가져오지만, 명시적으로 설정
+    sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    cfg.set_main_option("sqlalchemy.url", sync_url)
     
     # 비동기 엔진 생성
     async_engine = create_async_engine(
@@ -106,12 +115,13 @@ async def upgrade_migration_async(revision: str = "head"):
 
 async def downgrade_migration_async(revision: str = "-1"):
     """마이그레이션 롤백 - 비동기"""
-    cfg = Config()
-    cfg.set_main_option("script_location", "alembic")
-    cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-    
+    # alembic.ini 파일 경로 지정
+    alembic_ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+    cfg = Config(alembic_ini_path)
+    # script_location은 alembic.ini에서 자동으로 읽어옴
     # 동기 URL로 변환
     sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    cfg.set_main_option("sqlalchemy.url", sync_url)
     
     from sqlalchemy import create_engine
     from sqlalchemy.pool import StaticPool
@@ -170,8 +180,10 @@ async def show_current_revision_async():
 
 async def show_history_async():
     """마이그레이션 히스토리 확인 - 비동기"""
-    cfg = Config()
-    cfg.set_main_option("script_location", "alembic")
+    # alembic.ini 파일 경로 지정
+    alembic_ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+    cfg = Config(alembic_ini_path)
+    # script_location은 alembic.ini에서 자동으로 읽어옴
     
     from alembic.script import ScriptDirectory
     
