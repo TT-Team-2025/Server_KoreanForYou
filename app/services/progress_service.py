@@ -27,6 +27,57 @@ class ProgressService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _safe_float(value: Any) -> Optional[float]:
+        """안전하게 float로 변환"""
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _normalize_timestamp(value: Any) -> Optional[float]:
+        """타임스탬프를 초 단위로 정규화 (밀리초인 경우 변환)"""
+        raw = ProgressService._safe_float(value)
+        if raw is None:
+            return None
+        if raw >= 1000.0:
+            return raw / 1000.0
+        if raw > 30.0:
+            return raw / 1000.0
+        return raw
+
+    @staticmethod
+    def _normalize_duration(value: Any) -> Optional[float]:
+        """지속 시간을 초 단위로 정규화 (밀리초인 경우 변환)"""
+        raw = ProgressService._safe_float(value)
+        if raw is None:
+            return None
+        if raw >= 1000.0:
+            return raw / 1000.0
+        if raw > 30.0:
+            return raw / 1000.0
+        return raw
+
+    @staticmethod
+    def _clamp_score(value: Optional[float]) -> Optional[float]:
+        """점수를 0.0~100.0 범위로 제한"""
+        if value is None:
+            return None
+        return max(0.0, min(100.0, float(value)))
+
+    @staticmethod
+    def _compute_duration_variation_penalty(durations: List[float]) -> float:
+        """지속 시간 변동성에 대한 패널티 계산"""
+        if not durations:
+            return 0.0
+        avg = sum(durations) / len(durations)
+        variance = sum((d - avg) ** 2 for d in durations) / len(durations)
+        std_dev = variance ** 0.5
+        return min(10.0, std_dev * 25.0)
+
     async def get_user_progress_stats(self, user_id: int) -> Optional[ProgressStatsResponse]:
         """사용자 전체 학습 진행 현황 조회"""
         # 전체 활성 챕터 수
@@ -212,18 +263,107 @@ class ProgressService:
             )
         )
         return result.scalar_one_or_none()
-    
 
+    def _calculate_pronunciation_metrics(
+        self,
+        words: List[Dict[str, Any]],
+        utterances: List[Dict[str, Any]],
+    ) -> Tuple[Optional[float], Dict[str, Any]]:
+        """발음 점수 계산 (타임스탬프 기반)"""
+        confidences: List[float] = [
+            w["confidence"] for w in words if w.get("confidence") is not None
+        ]
 
+        if not confidences:
+            utter_conf = [
+                self._safe_float(u.get("confidence")) for u in utterances
+                if self._safe_float(u.get("confidence")) is not None
+            ]
+            confidences = utter_conf
 
+        detail: Dict[str, Any] = {
+            "word_count": len(words),
+            "metrics_source": "confidence" if confidences else "duration",
+        }
 
+        if confidences:
+            avg_conf = sum(confidences) / len(confidences)
+            variance = sum((c - avg_conf) ** 2 for c in confidences) / len(confidences)
+            std_dev = variance ** 0.5
+            low_threshold = 0.75
+            low_count = sum(1 for c in confidences if c < low_threshold)
+            low_ratio = low_count / len(confidences)
+
+            low_conf_words = [
+                w["text"]
+                for w in words
+                if w.get("confidence") is not None and w["confidence"] < low_threshold
+            ][:10]
+
+            score = (avg_conf * 100) - (low_ratio * 25) - (std_dev * 15)
+            score = self._clamp_score(score)
+
+            detail.update(
+                {
+                    "confidence_stddev": round(std_dev, 4),
+                    "low_confidence_ratio": round(low_ratio, 4),
+                    "low_confidence_words": low_conf_words,
+                }
+            )
+            return score, detail
+
+        durations = [w["duration"] for w in words if w.get("duration") is not None]
+        detail.update(
+            {
+                "duration_count": len(durations),
+                "average_duration": None,
+                "short_duration_ratio": None,
+                "long_duration_ratio": None,
+            }
+        )
+
+        if not durations:
+            return 80.0, detail
+
+        avg_duration = sum(durations) / len(durations)
+        # 발음 길이 기준: 0.18초 이하는 과도하게 짧은 발음으로 간주
+        short_threshold = 0.18
+        long_threshold = 1.8
+
+        short_count = sum(1 for d in durations if d < short_threshold)
+        long_count = sum(1 for d in durations if d > long_threshold)
+        short_ratio = short_count / len(durations)
+        long_ratio = long_count / len(durations)
+
+        duration_outliers = [
+            w["text"]
+            for w in words
+            if w.get("duration") is not None and (w["duration"] < short_threshold or w["duration"] > long_threshold)
+        ][:10]
+
+        base_score = 95.0
+        short_penalty = min(50.0, short_ratio * 110.0)
+        long_penalty = min(30.0, long_ratio * 70.0)
+        stability_penalty = min(15.0, self._compute_duration_variation_penalty(durations))
+
+        score = self._clamp_score(base_score - short_penalty - long_penalty - stability_penalty)
+
+        detail.update(
+            {
+                "average_duration": round(avg_duration, 4),
+                "short_duration_ratio": round(short_ratio, 4),
+                "long_duration_ratio": round(long_ratio, 4),
+                "duration_outlier_words": duration_outliers,
+            }
+        )
+        return score, detail
     
     async def update_sentence_progress(
         self,
         user_id: int,
         sentence_id: int,
         audio_file: UploadFile
-    ) -> Tuple[SentenceProgress, Dict[str, List[str]]]:
+    ) -> Tuple[SentenceProgress, Dict[str, Any]]:
         """문장 진행 상태 업데이트(STT 기반)"""
         sentence_result = await self.db.execute(
             select(Sentence).where(Sentence.sentence_id == sentence_id)
@@ -277,7 +417,7 @@ class ProgressService:
             utterances = results.get("utterances", []) if isinstance(results, dict) else []
             transcript_segments: List[str] = []
             recognized_words: List[str] = []
-            word_timestamps: List[str] = []
+            word_timestamps: List[Dict[str, Any]] = []
             raw_utterances: List[Dict[str, Any]] = []
 
             for utterance in utterances:
@@ -291,9 +431,52 @@ class ProgressService:
                         or word_info.get("text")
                         or word_info.get("word")
                     )
-                    if word_text:
-                        recognized_words.append(word_text)
-                        word_timestamps.append(word_text)
+                    if not word_text:
+                        continue
+                    
+                    recognized_words.append(word_text)
+                    
+                    # 타임스탬프 정보 추출
+                    start = self._normalize_timestamp(
+                        word_info.get("start_at")
+                        or word_info.get("start")
+                        or word_info.get("begin_at")
+                    )
+                    end = self._normalize_timestamp(
+                        word_info.get("end_at")
+                        or word_info.get("end")
+                        or word_info.get("finish_at")
+                    )
+                    duration = self._normalize_duration(
+                        word_info.get("duration") or word_info.get("duration_ms")
+                    )
+                    confidence = self._safe_float(
+                        word_info.get("confidence") or word_info.get("score")
+                    )
+                    
+                    # utterance 레벨에서 보완
+                    if start is None and utterance.get("start_at") is not None:
+                        start = self._normalize_timestamp(utterance.get("start_at"))
+                    if end is None and utterance.get("end_at") is not None:
+                        end = self._normalize_timestamp(utterance.get("end_at"))
+                    if duration is None and utterance.get("duration") is not None:
+                        duration = self._normalize_duration(utterance.get("duration"))
+                    
+                    # 계산으로 보완
+                    if end is None and start is not None and duration is not None:
+                        end = start + duration
+                    if start is None and end is not None and duration is not None:
+                        start = end - duration
+                    if duration is None and start is not None and end is not None:
+                        duration = max(0.0, end - start)
+                    
+                    word_timestamps.append({
+                        "text": word_text,
+                        "start": start,
+                        "end": end,
+                        "duration": duration,
+                        "confidence": confidence,
+                    })
 
             stt_transcript = " ".join(transcript_segments).strip()
             if not stt_transcript:
@@ -335,6 +518,27 @@ class ProgressService:
                 if overflow > 0:
                     extra_words.extend([word] * overflow)
 
+            # 발음 점수 계산 (타임스탬프 기반)
+            pronunciation_score, pronunciation_detail = self._calculate_pronunciation_metrics(
+                word_timestamps, utterances
+            )
+
+            # 정확도 점수 계산
+            accuracy_score = None
+            if total_word_count > 0:
+                accuracy_score = (Decimal(correct_word_count) / Decimal(total_word_count)) * Decimal(100)
+                accuracy_score = accuracy_score.quantize(Decimal("0.01"))
+
+            # 전체 점수 계산 (발음 점수와 정확도 점수의 평균)
+            overall_score = None
+            if pronunciation_score is not None and accuracy_score is not None:
+                overall_score = (Decimal(str(pronunciation_score)) + accuracy_score) / Decimal(2)
+                overall_score = overall_score.quantize(Decimal("0.01"))
+            elif pronunciation_score is not None:
+                overall_score = Decimal(str(pronunciation_score)).quantize(Decimal("0.01"))
+            elif accuracy_score is not None:
+                overall_score = accuracy_score
+
             progress.stt_transcript = stt_transcript
             progress.word_timestamps = word_timestamps or None
             progress.total_word_count = total_word_count
@@ -364,9 +568,14 @@ class ProgressService:
             chapter_progress.last_access_at = datetime.now()
 
             mismatch_info = {
+                "target_sentence": sentence.content,  # 원본 문장
                 "missing_words": missing_words,
                 "extra_words": extra_words,
                 "raw_utterances": raw_utterances,
+                "pronunciation_score": pronunciation_score,
+                "pronunciation_detail": pronunciation_detail,
+                "accuracy_score": float(accuracy_score) if accuracy_score is not None else None,
+                "overall_score": float(overall_score) if overall_score is not None else None,
             }
         finally:
             await audio_file.close()

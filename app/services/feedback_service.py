@@ -3,15 +3,17 @@
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Optional
+from typing import Optional, List, Dict, Any, Tuple
 import re
 from collections import Counter
+from decimal import Decimal
 
 from app.models.learning import ChapterFeedback, SentenceFeedback, Sentence
 from app.models.scenario import ScenarioFeedback, ScenarioProgress
 from app.schemas.learning import ChapterFeedbackCreate, SentenceFeedbackCreate
 from app.services.external_service import LLMService
 from app.models.progress import SentenceProgress
+from app.services.progress_service import ProgressService
 
 ## 매개변수 수정 필요 -> FeedbackCreate!
 
@@ -154,6 +156,8 @@ class FeedbackService:
     
     async def get_sentence_feedback(self, user_id: int, sentence_id: int) -> Optional[SentenceFeedback]:
         """문장 피드백 조회 (가장 최근 피드백 반환)"""
+        from sqlalchemy.orm import selectinload
+        
         result = await self.db.execute(
             select(SentenceFeedback)
             .join(SentenceProgress, SentenceFeedback.sentence_progress_id == SentenceProgress.progress_id)
@@ -161,6 +165,7 @@ class FeedbackService:
                 SentenceFeedback.user_id == user_id,
                 SentenceFeedback.sentence_id == sentence_id
             )
+            .options(selectinload(SentenceFeedback.sentence_progress))
             .order_by(SentenceProgress.created_at.desc())
         )
         return result.scalar_one_or_none()
@@ -235,14 +240,63 @@ class FeedbackService:
         if extra_words:
             weaknesses.append(f"추가된 단어: {', '.join(set(extra_words))}")
 
+        # word_timestamps를 활용한 발음 점수 계산
+        word_timestamps = sentence_progress.word_timestamps or []
+        pronunciation_score = None
+        pronunciation_detail = None
+        
+        if word_timestamps and isinstance(word_timestamps, list) and len(word_timestamps) > 0:
+            # progress_service의 발음 점수 계산 로직 활용
+            progress_service = ProgressService(self.db)
+            
+            # utterances는 raw_utterances가 없으므로 빈 리스트로 전달
+            # word_timestamps가 이미 Dict 형태라면 그대로 사용
+            if isinstance(word_timestamps[0], dict):
+                pronunciation_score, pronunciation_detail = progress_service._calculate_pronunciation_metrics(
+                    word_timestamps, []
+                )
+            else:
+                # 기존 데이터 호환성: List[str]인 경우
+                pronunciation_score = None
+                pronunciation_detail = None
+
         # 정확도 계산
+        accuracy_score = None
         if sentence_progress.total_word_count and sentence_progress.correct_word_count:
             accuracy_rate = (sentence_progress.correct_word_count / sentence_progress.total_word_count) * 100
+            accuracy_score = int(accuracy_rate)
             if accuracy_rate < 70:
                 weaknesses.append("발음 정확도가 낮습니다")
 
+        # 전체 점수 계산
+        overall_score = None
+        if pronunciation_score is not None and accuracy_score is not None:
+            overall_score = int((pronunciation_score + accuracy_score) / 2)
+        elif pronunciation_score is not None:
+            overall_score = int(pronunciation_score)
+        elif accuracy_score is not None:
+            overall_score = accuracy_score
+
+        # word_timestamps 기반 weaknesses 추가
+        if pronunciation_detail:
+            low_conf_words = pronunciation_detail.get("low_confidence_words", [])
+            if low_conf_words:
+                weaknesses.append(f"낮은 신뢰도 단어: {', '.join(low_conf_words[:5])}")
+            
+            duration_outliers = pronunciation_detail.get("duration_outlier_words", [])
+            if duration_outliers:
+                weaknesses.append(f"발음 길이 이상 단어: {', '.join(duration_outliers[:5])}")
+
         # LLM을 통한 구체적인 피드백 생성 (선택적)
         if weaknesses:
+            pronunciation_info = ""
+            if pronunciation_score is not None:
+                pronunciation_info = f"- 발음 점수: {pronunciation_score}점 (100점 만점)\n"
+            if accuracy_score is not None:
+                pronunciation_info += f"- 정확도 점수: {accuracy_score}점 (100점 만점)\n"
+            if overall_score is not None:
+                pronunciation_info += f"- 전체 점수: {overall_score}점 (100점 만점)\n"
+            
             prompt = f"""
 다음은 한국어 학습자의 문장 발음 연습 결과입니다:
 
@@ -250,7 +304,7 @@ class FeedbackService:
 - 인식된 문장: {sentence_progress.stt_transcript}
 - 전체 단어 수: {sentence_progress.total_word_count}
 - 정확히 발음한 단어 수: {sentence_progress.correct_word_count}
-- 개선이 필요한 부분:
+{pronunciation_info}- 개선이 필요한 부분:
 {chr(10).join(f"  • {w}" for w in weaknesses)}
 
 학습자에게 2-3문장으로 구체적인 개선 피드백을 작성해주세요:
@@ -279,7 +333,11 @@ class FeedbackService:
             user_id=user_id,
             sentence_id=sentence_id,
             sentence_progress_id=sentence_progress_id,
-            weaknesses=weaknesses if weaknesses else None
+            weaknesses=weaknesses if weaknesses else None,
+            word_timestamps=word_timestamps if word_timestamps else None,
+            pronunciation_score=pronunciation_score,
+            accuracy_score=accuracy_score,
+            overall_score=overall_score
         )
         self.db.add(feedback)
 

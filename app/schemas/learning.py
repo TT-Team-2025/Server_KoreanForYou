@@ -173,6 +173,10 @@ class SentenceFeedbackCreate(SentenceFeedbackBase):
 class SentenceFeedbackResponse(SentenceFeedbackBase):
     feedback_id: int
     weaknesses: Optional[List[str]] = None
+    word_timestamps: Optional[List[Dict[str, Any]]] = None
+    pronunciation_score: Optional[int] = None
+    accuracy_score: Optional[int] = None
+    overall_score: Optional[int] = None
 
     class Config:
         from_attributes = True

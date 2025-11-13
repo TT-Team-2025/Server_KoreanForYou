@@ -124,7 +124,9 @@ async def update_sentence_progress(
         message="문장 진행 상태가 업데이트되었습니다",
         data={
             "progress_id": progress.progress_id,
+            "target_sentence": mismatch_info.get("target_sentence"),  # 원본 문장
             "stt_transcript": progress.stt_transcript,
+            "stt_audio_url": progress.stt_audio_url,  # 오디오 파일 URL
             "word_timestamps": progress.word_timestamps,
             "total_word_count": progress.total_word_count,
             "recognized_word_count": progress.recognized_word_count,
@@ -134,7 +136,11 @@ async def update_sentence_progress(
             "total_time": progress.total_time,
             "missing_words": mismatch_info["missing_words"],
             "extra_words": mismatch_info["extra_words"],
-            "utterances": mismatch_info["raw_utterances"]
+            "utterances": mismatch_info["raw_utterances"],
+            "pronunciation_score": mismatch_info.get("pronunciation_score"),
+            "pronunciation_detail": mismatch_info.get("pronunciation_detail"),
+            "accuracy_score": mismatch_info.get("accuracy_score"),  # 정확도 점수
+            "overall_score": mismatch_info.get("overall_score"),  # 전체 점수
         }
     )
 

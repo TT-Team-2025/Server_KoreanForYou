@@ -113,6 +113,10 @@ class SentenceFeedback(Base):
     sentence_id = Column(Integer, ForeignKey("sentences.sentence_id"), nullable=False)
     sentence_progress_id = Column(Integer, ForeignKey("sentence_progress.progress_id"), nullable=False)
     weaknesses = Column(JSON)  # 개선이 필요한 부분 (JSON 배열)
+    word_timestamps = Column(JSON)  # 단어별 타임스탬프 정보 (SentenceProgress에서 복사)
+    pronunciation_score = Column(Integer)  # 발음 점수 (0-100)
+    accuracy_score = Column(Integer)  # 정확도 점수 (0-100)
+    overall_score = Column(Integer)  # 전체 점수 (0-100)
     
     # 관계 설정
     user = relationship("User", back_populates="sentence_feedback")

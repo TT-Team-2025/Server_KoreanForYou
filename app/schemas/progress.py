@@ -2,7 +2,7 @@
 학습 진행 상황 관련 스키마
 """
 from pydantic import BaseModel, validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from decimal import Decimal
 
@@ -33,13 +33,21 @@ class UserProgressResponse(UserProgressBase):
 
 
 # 문장 진행 상황 관련
+class WordTimestamp(BaseModel):
+    """단어별 타임스탬프 정보"""
+    text: str
+    start: Optional[float] = None
+    end: Optional[float] = None
+    duration: Optional[float] = None
+    confidence: Optional[float] = None
+
 class SentenceProgressBase(BaseModel):
     user_id: int
     sentence_id: int
     is_completed: bool = False
     stt_audio_url: Optional[str] = None
     stt_transcript: Optional[str] = None
-    word_timestamps: Optional[List[str]] = None
+    word_timestamps: Optional[List[Dict[str, Any]]] = None
     total_word_count: Optional[int] = None
     correct_word_count: Optional[int] = None
     recognized_word_count: Optional[int] = None
@@ -56,7 +64,7 @@ class SentenceProgressUpdate(BaseModel):
     is_completed: Optional[bool] = None
     stt_audio_url: Optional[str] = None
     stt_transcript: Optional[str] = None
-    word_timestamps: Optional[List[str]] = None
+    word_timestamps: Optional[List[Dict[str, Any]]] = None
     total_word_count: Optional[int] = None
     correct_word_count: Optional[int] = None
     recognized_word_count: Optional[int] = None
