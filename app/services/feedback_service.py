@@ -345,7 +345,7 @@ class FeedbackService:
         self.db.add(feedback)
 
         await self.db.commit()
-        await self.db.refresh(feedback)
+        await self.db.refresh(feedback, ["sentence_progress"])
 
         return feedback
     
