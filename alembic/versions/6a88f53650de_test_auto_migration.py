@@ -25,10 +25,20 @@ def upgrade() -> None:
     op.alter_column('scenario_progress', 'user_id',
                existing_type=sa.INTEGER(),
                nullable=True)
-    op.drop_constraint('scenarios_job_id_fkey', 'scenarios', type_='foreignkey')
-    op.drop_constraint('scenarios_level_id_fkey', 'scenarios', type_='foreignkey')
-    op.drop_column('scenarios', 'level_id')
-    op.drop_column('scenarios', 'job_id')
+    # Drop constraints only if they exist
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    constraints = [c['name'] for c in inspector.get_foreign_keys('scenarios')]
+    if 'scenarios_job_id_fkey' in constraints:
+        op.drop_constraint('scenarios_job_id_fkey', 'scenarios', type_='foreignkey')
+    if 'scenarios_level_id_fkey' in constraints:
+        op.drop_constraint('scenarios_level_id_fkey', 'scenarios', type_='foreignkey')
+    # Drop columns only if they exist
+    columns = [c['name'] for c in inspector.get_columns('scenarios')]
+    if 'level_id' in columns:
+        op.drop_column('scenarios', 'level_id')
+    if 'job_id' in columns:
+        op.drop_column('scenarios', 'job_id')
     # ### end Alembic commands ###
 
 

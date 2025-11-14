@@ -5,6 +5,13 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Bool
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
+import enum
+
+
+class UserRole(str, enum.Enum):
+    """사용자 역할"""
+    USER = "user"
+    ADMIN = "admin"
 
 
 class User(Base):
@@ -20,6 +27,7 @@ class User(Base):
     job_id = Column(Integer, ForeignKey("jobs.job_id"))
     description = Column(String(500))
     level_id = Column(Integer, ForeignKey("user_level.level_id"))
+    role = Column(String(10), nullable=False, default=UserRole.USER.value)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -28,6 +36,7 @@ class User(Base):
     level = relationship("UserLevel", back_populates="users")
     posts = relationship("Post", back_populates="user")
     replies = relationship("Reply", back_populates="user")
+    post_likes = relationship("PostLike", back_populates="user")
     user_progress = relationship("UserProgress", back_populates="user")
     sentence_progress = relationship("SentenceProgress", back_populates="user")
     chapter_feedback = relationship("ChapterFeedback", back_populates="user")

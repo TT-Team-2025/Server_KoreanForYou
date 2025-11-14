@@ -3,8 +3,9 @@
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.user import Job, UserLevel
+from app.models.user import Job, UserLevel, User, UserStatus, UserRole
 from app.models.learning import LearningCategory
+from app.core.security import get_password_hash
 
 
 # Job 매핑 데이터
@@ -108,6 +109,53 @@ async def seed_levels(session: AsyncSession):
     await session.commit()
 
 
+async def seed_admin_user(session: AsyncSession):
+    """초기 관리자 계정 생성"""
+    print("[SEED] Checking admin user...")
+    
+    email = "admin@naver.com"
+    password = "admin1234"
+    
+    # 기존 관리자 계정 확인
+    result = await session.execute(select(User).where(User.email == email))
+    existing_user = result.scalar_one_or_none()
+    
+    if existing_user is None:
+        # 새 관리자 계정 생성
+        hashed_password = get_password_hash(password)
+        admin_user = User(
+            email=email,
+            password=hashed_password,
+            nickname="관리자",
+            role=UserRole.ADMIN.value
+        )
+        session.add(admin_user)
+        await session.commit()
+        await session.refresh(admin_user)
+        
+        # 사용자 상태 초기화
+        user_status = UserStatus(
+            user_id=admin_user.user_id,
+            total_study_time=0,
+            total_sentences_completed=0,
+            total_scenarios_completed=0,
+            current_access_days=0,
+            longest_access_days=0
+        )
+        session.add(user_status)
+        await session.commit()
+        
+        print(f"[SEED] Admin user created: {email} (password: {password})")
+    else:
+        # 기존 계정이 있으면 관리자로 설정
+        if existing_user.role != UserRole.ADMIN.value:
+            existing_user.role = UserRole.ADMIN.value
+            await session.commit()
+            print(f"[SEED] Existing user promoted to admin: {email}")
+        else:
+            print(f"[SEED] Admin user already exists: {email}")
+
+
 async def seed_all(session: AsyncSession):
     """모든 초기 데이터 삽입"""
     try:
@@ -116,6 +164,7 @@ async def seed_all(session: AsyncSession):
         await seed_jobs(session)
         await seed_categories(session)
         await seed_levels(session)
+        await seed_admin_user(session)
 
         print("[SEED] Database seeding completed successfully!")
     except Exception as e:
