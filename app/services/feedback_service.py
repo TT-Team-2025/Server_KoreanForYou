@@ -178,7 +178,14 @@ class FeedbackService:
         feedback_data: SentenceFeedbackCreate
     ) -> SentenceFeedback:
         """문장 피드백 생성 및 저장"""
-        sentence_progress_id = feedback_data.sentence_progress_id
+        sentence_progress_result = await self.db.execute(
+            select(SentenceProgress)
+            .where(SentenceProgress.id == feedback_data.sentence_progress_id)
+        )
+        sentence_progress = sentence_progress_result.scalar_one_or_none()
+
+        if not sentence_progress:
+            raise ValueError("문장 진행 상황을 찾을 수 없습니다")
 
         # 문장 진행 상황 조회
         progress_result = await self.db.execute(
