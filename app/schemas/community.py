@@ -58,7 +58,10 @@ class PostUpdate(BaseModel):
 class PostResponse(PostBase):
     post_id: int
     user_id: int
+    is_pinned: bool
     view_count: int
+    reply_count: int = 0  # 댓글 수
+    like_count: int = 0  # 좋아요 수
     created_at: datetime
     updated_at: datetime
     
@@ -85,7 +88,14 @@ class ReplyBase(BaseModel):
 
 
 class ReplyCreate(ReplyBase):
-    pass
+    parent_reply_id: Optional[int] = None
+    
+    @validator('parent_reply_id', pre=True)
+    def validate_parent_reply_id(cls, v):
+        # 0이나 빈 값은 None으로 변환 (일반 댓글)
+        if v is None or v == 0 or v == "":
+            return None
+        return v
 
 
 class ReplyUpdate(ReplyBase):
@@ -96,11 +106,24 @@ class ReplyResponse(ReplyBase):
     reply_id: int
     post_id: int
     user_id: int
+    parent_reply_id: Optional[int] = None
+    is_deleted: bool = False
     created_at: datetime
     updated_at: datetime
+    child_replies: Optional[List['ReplyResponse']] = []
     
     class Config:
         from_attributes = True
+
+
+# 순환 참조 해결
+ReplyResponse.model_rebuild()
+
+
+# PostResponse에 replies 필드 추가 (ReplyResponse 정의 후)
+class PostDetailResponse(PostResponse):
+    """게시글 상세 조회 응답 (댓글 포함)"""
+    replies: Optional[List[ReplyResponse]] = None
 
 
 class ReplyListResponse(BaseModel):
