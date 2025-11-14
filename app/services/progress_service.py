@@ -626,3 +626,7 @@ class ProgressService:
             average_score=None  # 별도 계산 필요
         )
 
+    async def user_chapter_progress(self, user_id: int, chapter_id: int) -> int:
+        """특정 사용자의 특정 챕터 완료율 조회 (0-100 정수)"""
+        completion_rate, _, _ = await self._compute_chapter_completion(user_id, chapter_id)
+        return int(completion_rate)

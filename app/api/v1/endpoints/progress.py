@@ -161,3 +161,31 @@ async def get_user_progress_history(
         )
 
     return progress_history
+
+
+@router.get("/users/{user_id}/chapters/{chapter_id}", response_model=BaseResponse)
+async def get_user_chapter_progress(
+    user_id: int,
+    chapter_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """특정 사용자의 특정 챕터 완료율 조회 (0-100 정수)"""
+    progress_service = ProgressService(db)
+
+    try:
+        completion_rate = await progress_service.user_chapter_progress(user_id, chapter_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"완료율 조회 중 오류가 발생했습니다: {str(exc)}"
+        ) from exc
+
+    return BaseResponse(
+        success=True,
+        message="챕터 완료율을 조회했습니다",
+        data={
+            "user_id": user_id,
+            "chapter_id": chapter_id,
+            "completion_rate": completion_rate
+        }
+    )
