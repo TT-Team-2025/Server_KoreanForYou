@@ -132,7 +132,6 @@ async def get_sentence_feedback(
 ## 저장 -> 생성 로직 필요
 @router.post("/sentences/{sentence_id}", response_model=SentenceFeedbackResponse)
 async def generate_sentence_feedback(
-    sentence_id: int,
     feedback_data: SentenceFeedbackCreate,
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
@@ -144,7 +143,7 @@ async def generate_sentence_feedback(
     feedback_service = FeedbackService(db)
 
     try:
-        feedback = await feedback_service.generate_sentence_feedback(user_id, sentence_id, feedback_data)
+        feedback = await feedback_service.generate_sentence_feedback(feedback_data)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -187,6 +186,10 @@ async def generate_sentence_feedback(
             overall_score = int(pronunciation_score)
         elif accuracy_score is not None:
             overall_score = accuracy_score
+            
+        if pronunciation_score is not None: pronunciation_score = int(pronunciation_score)
+        if accuracy_score is not None: accuracy_score = int(accuracy_score)
+        if overall_score is not None: overall_score = int(overall_score)
 
     # 응답에 추가 정보 포함
     response_data = {
