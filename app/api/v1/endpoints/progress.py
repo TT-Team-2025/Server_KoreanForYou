@@ -104,7 +104,7 @@ async def update_sentence_progress(
     progress_service = ProgressService(db)
 
     try:
-        progress, mismatch_info = await progress_service.update_sentence_progress(user_id, sentence_id, file)
+        progress, mismatch_info = await progress_service.update_sentence_progress(user_id, sentence_id, start_time, file)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
