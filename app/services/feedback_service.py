@@ -128,7 +128,8 @@ class FeedbackService:
             # 첫 문장의 시작 시간과 마지막 문장의 종료 시간으로 총 학습 시간 계산
             sorted_progresses = sorted(sentences_progresses, key=lambda x: x.start_time or x.created_at)
             total_time_seconds = (sorted_progresses[-1].end_time - sorted_progresses[0].start_time).total_seconds() if sorted_progresses[-1].end_time else 0
-            completion_time = sorted_progresses[-1].end_time
+            # ✅ completion_time은 초 단위 정수로 변환 (스키마 타입 맞춤)
+            completion_time = int(total_time_seconds) if sorted_progresses[-1].end_time else None
         else:
             total_time_seconds = 0
             completion_time = None

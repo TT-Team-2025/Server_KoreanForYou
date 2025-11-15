@@ -4,7 +4,7 @@
 import asyncio
 import re
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List, Tuple, Dict, Any
 
@@ -366,6 +366,14 @@ class ProgressService:
         audio_file: UploadFile
     ) -> Tuple[SentenceProgress, Dict[str, Any]]:
         """문장 진행 상태 업데이트(STT 기반)"""
+        # ✅ start_time을 timezone-naive UTC로 정규화 (DB 호환성)
+        if start_time.tzinfo is None:
+            # 이미 timezone-naive면 그대로 사용
+            pass
+        else:
+            # timezone-aware면 UTC로 변환 후 tzinfo 제거
+            start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+
         sentence_result = await self.db.execute(
             select(Sentence).where(Sentence.sentence_id == sentence_id)
         )
@@ -394,7 +402,8 @@ class ProgressService:
             "use_word_timestamp": True,
         }
 
-        session_start = datetime.now()
+        # ✅ session_start도 timezone-naive UTC로 (DB 호환성)
+        session_start = datetime.now(timezone.utc).replace(tzinfo=None)
 
         try:
             await audio_file.seek(0)

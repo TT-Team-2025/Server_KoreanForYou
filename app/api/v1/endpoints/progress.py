@@ -3,7 +3,7 @@
 """
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -85,7 +85,7 @@ async def get_sentence_progress(
 @router.patch("/sentences/{sentence_id}", response_model=BaseResponse)
 async def update_sentence_progress(
     sentence_id: int,
-    start_time: datetime,
+    start_time: datetime = Form(...),
     file: UploadFile = File(..., description="사용자 음성 녹음 파일"),
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
