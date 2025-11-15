@@ -362,6 +362,7 @@ class ProgressService:
         self,
         user_id: int,
         sentence_id: int,
+        start_time: datetime,
         audio_file: UploadFile
     ) -> Tuple[SentenceProgress, Dict[str, Any]]:
         """문장 진행 상태 업데이트(STT 기반)"""
@@ -544,10 +545,9 @@ class ProgressService:
             progress.total_word_count = total_word_count
             progress.recognized_word_count = recognized_word_count
             progress.correct_word_count = correct_word_count
-            if not progress.start_time:
-                progress.start_time = session_start
-            progress.end_time = None
-            progress.total_time = None
+            progress.start_time = start_time
+            progress.end_time = session_start
+            progress.total_time = (session_start-start_time).seconds
             progress.is_completed = total_word_count > 0
 
             completion_rate, _, _ = await self._compute_chapter_completion(user_id, sentence.chapter_id)
