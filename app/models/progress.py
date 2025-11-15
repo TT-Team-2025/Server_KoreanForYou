@@ -1,7 +1,7 @@
 """
 학습 진행 상황 관련 모델
 """
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, DECIMAL, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, DECIMAL, JSON, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -41,7 +41,7 @@ class SentenceProgress(Base):
     total_word_count = Column(Integer)  # 전체 단어 수
     correct_word_count = Column(Integer)  # 맞은 단어 수
     recognized_word_count = Column(Integer)  # STT에서 인식된 단어 수
-    total_time = Column(float)  # 총 학습 시간(초)
+    total_time = Column(Float)  # 총 학습 시간(초)
     
     # 시간
     start_time = Column(DateTime)
