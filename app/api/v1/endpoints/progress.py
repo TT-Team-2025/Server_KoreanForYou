@@ -18,6 +18,7 @@ from app.schemas.progress import (
 )
 from app.schemas.common import BaseResponse
 from app.services.progress_service import ProgressService
+from datetime import datetime
 
 router = APIRouter()
 
@@ -84,6 +85,7 @@ async def get_sentence_progress(
 @router.patch("/sentences/{sentence_id}", response_model=BaseResponse)
 async def update_sentence_progress(
     sentence_id: int,
+    start_time: datetime,
     file: UploadFile = File(..., description="사용자 음성 녹음 파일"),
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)

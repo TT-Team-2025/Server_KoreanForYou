@@ -41,7 +41,7 @@ class SentenceProgress(Base):
     total_word_count = Column(Integer)  # 전체 단어 수
     correct_word_count = Column(Integer)  # 맞은 단어 수
     recognized_word_count = Column(Integer)  # STT에서 인식된 단어 수
-    total_time = Column(Integer)  # 총 학습 시간(초)
+    total_time = Column(float)  # 총 학습 시간(초)
     
     # 시간
     start_time = Column(DateTime)
