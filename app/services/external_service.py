@@ -84,13 +84,11 @@ class ExternalService:
     def __init__(self, db: Session):
         self.db = db
         self.rtzr_client = RTZROpenAPIClient(
-           CLIENT_ID , 
+           CLIENT_ID ,
             CLIENT_SECRET
         )
-        self.clova_voice_client = ClovaVoiceTTSClient(
-            CLOVA_VOICE_CLIENT_ID,
-            CLOVA_VOICE_CLIENT_SECRET
-        )
+        # OpenAI TTS 사용 (Clova Voice 대신)
+        self.tts_client = OpenAITTSClient(OPENAI_API_KEY)
         self.llm_service = LLMService(db)
         self.s3_bucket = os.environ.get("S3_BUCKET_NAME")
         self.s3_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
@@ -252,74 +250,66 @@ class ExternalService:
 
     ##### TTS (Text-to-Speech) 관련 메서드들 #####
     async def text_to_speech(
-        self, 
-        text: str, 
-        speaker: str = "nara", 
-        speed: int = 0, 
-        volume: int = 0,
-        pitch: int = 0,
-        emotion: str = "neutral",
-        format: str = "mp3"
+        self,
+        text: str,
+        speaker: str = "alloy",  # OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
+        speed: float = 1.0,  # OpenAI: 0.25 ~ 4.0
+        volume: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
+        pitch: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
+        emotion: str = "neutral",  # 무시됨 (OpenAI는 지원하지 않음)
+        format: str = "mp3"  # 무시됨 (OpenAI는 항상 mp3)
     ) -> bytes:
         """
-        텍스트를 음성으로 변환
+        텍스트를 음성으로 변환 (OpenAI TTS 사용)
         Args:
             text: 변환할 텍스트
-            speaker: 음성 종류 (nara, jinho, miju 등)
-            speed: 음성 속도 (-5 ~ 5)
-            volume: 음성 볼륨 (-5 ~ 5)
-            pitch: 음성 피치 (-5 ~ 5)
-            emotion: 감정 (neutral, happy, sad, angry, fearful, surprised, disgusted)
-            format: 출력 형식 (mp3, wav)
+            speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
+            speed: 음성 속도 (0.25 ~ 4.0, 기본값 1.0)
+            volume: 무시됨
+            pitch: 무시됨
+            emotion: 무시됨
+            format: 무시됨 (항상 mp3)
         Returns:
-            음성 파일 바이트 데이터
+            음성 파일 바이트 데이터 (MP3)
         """
         return await asyncio.to_thread(
-            self.clova_voice_client.text_to_speech,
+            self.tts_client.text_to_speech,
             text=text,
             speaker=speaker,
-            speed=speed,
-            volume=volume,
-            pitch=pitch,
-            emotion=emotion,
-            format=format
+            speed=speed
         )
     
     async def text_to_speech_file(
-        self, 
-        text: str, 
+        self,
+        text: str,
         output_path: str,
-        speaker: str = "nara", 
-        speed: int = 0, 
-        volume: int = 0,
-        pitch: int = 0,
-        emotion: str = "neutral",
-        format: str = "mp3"
+        speaker: str = "alloy",
+        speed: float = 1.0,
+        volume: int = 0,  # 무시됨
+        pitch: int = 0,  # 무시됨
+        emotion: str = "neutral",  # 무시됨
+        format: str = "mp3"  # 무시됨
     ) -> str:
         """
-        텍스트를 음성 파일로 변환하여 저장
+        텍스트를 음성 파일로 변환하여 저장 (OpenAI TTS 사용)
         Args:
             text: 변환할 텍스트
             output_path: 저장할 파일 경로
-            speaker: 음성 종류
-            speed: 음성 속도 (-5 ~ 5)
-            volume: 음성 볼륨 (-5 ~ 5)
-            pitch: 음성 피치 (-5 ~ 5)
-            emotion: 감정
-            format: 출력 형식 (mp3, wav)
+            speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
+            speed: 음성 속도 (0.25 ~ 4.0, 기본값 1.0)
+            volume: 무시됨
+            pitch: 무시됨
+            emotion: 무시됨
+            format: 무시됨
         Returns:
             저장된 파일 경로
         """
         return await asyncio.to_thread(
-            self.clova_voice_client.text_to_speech_file,
+            self.tts_client.text_to_speech_file,
             text=text,
             output_path=output_path,
             speaker=speaker,
-            speed=speed,
-            volume=volume,
-            pitch=pitch,
-            emotion=emotion,
-            format=format
+            speed=speed
         )
 
 
@@ -437,6 +427,118 @@ class MicrophoneStream:
                     break
 
             yield b"".join(data)  # 오디오 데이터 반환
+
+
+class OpenAITTSClient:
+    """OpenAI TTS 클라이언트"""
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.api_url = "https://api.openai.com/v1/audio/speech"
+        self._sess = RequestsSession()
+
+    def _get_headers(self) -> Dict[str, str]:
+        """인증 헤더 반환"""
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+    def text_to_speech(
+        self,
+        text: str,
+        speaker: str = "alloy",  # OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
+        speed: float = 1.0,  # 0.25 to 4.0
+        **kwargs  # 나머지 파라미터는 무시 (호환성 유지)
+    ) -> bytes:
+        """
+        텍스트를 음성으로 변환 (OpenAI TTS)
+
+        Args:
+            text: 변환할 텍스트
+            speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
+            speed: 음성 속도 (0.25 ~ 4.0, 기본값 1.0)
+
+        Returns:
+            음성 파일 바이트 데이터 (MP3)
+        """
+        if not self.api_key:
+            raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
+
+        # OpenAI 지원 voice 목록
+        valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+        if speaker not in valid_voices:
+            logger.warning(f"지원하지 않는 voice: {speaker}, 기본값 'alloy' 사용")
+            speaker = "alloy"
+
+        # speed 범위 검증
+        speed = max(0.25, min(4.0, speed))
+
+        payload = {
+            "model": "tts-1",  # tts-1 또는 tts-1-hd
+            "input": text,
+            "voice": speaker,
+            "speed": speed
+        }
+
+        headers = self._get_headers()
+
+        try:
+            logger.debug(f"OpenAI TTS 요청 URL: {self.api_url}")
+            logger.debug(f"OpenAI TTS 요청 데이터: {payload}")
+
+            response = self._sess.post(
+                self.api_url,
+                headers=headers,
+                json=payload
+            )
+
+            logger.debug(f"OpenAI TTS 응답 상태 코드: {response.status_code}")
+
+            if response.status_code != 200:
+                logger.error(f"OpenAI TTS API 오류 응답: {response.text}")
+
+            response.raise_for_status()
+            return response.content
+
+        except Exception as e:
+            logger.error(f"OpenAI TTS 오류: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"오류 응답 내용: {e.response.text}")
+            raise
+
+    def text_to_speech_file(
+        self,
+        text: str,
+        output_path: str,
+        speaker: str = "alloy",
+        speed: float = 1.0,
+        **kwargs  # 나머지 파라미터는 무시 (호환성 유지)
+    ) -> str:
+        """
+        텍스트를 음성 파일로 변환하여 저장
+
+        Args:
+            text: 변환할 텍스트
+            output_path: 저장할 파일 경로
+            speaker: 음성 종류
+            speed: 음성 속도
+
+        Returns:
+            저장된 파일 경로
+        """
+        audio_data = self.text_to_speech(
+            text=text,
+            speaker=speaker,
+            speed=speed
+        )
+
+        # 디렉토리가 없으면 생성
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        with open(output_path, "wb") as f:
+            f.write(audio_data)
+
+        return output_path
 
 
 class ClovaVoiceTTSClient:
