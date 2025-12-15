@@ -280,7 +280,7 @@ class ExternalService:
         self,
         text: str,
         speaker: str = "alloy",  # OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
-        speed: float = 1.5,  # 기본값 1.5 (약간 빠름) - Clova의 0에 해당
+        speed: float = 1.2,  # 기본값 1.2배속
         volume: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
         pitch: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
         emotion: str = "neutral",  # 무시됨 (OpenAI는 지원하지 않음)
@@ -291,7 +291,7 @@ class ExternalService:
         Args:
             text: 변환할 텍스트
             speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
-            speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.5)
+            speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.2)
             volume: 무시됨
             pitch: 무시됨
             emotion: 무시됨
@@ -314,7 +314,7 @@ class ExternalService:
         text: str,
         output_path: str,
         speaker: str = "alloy",
-        speed: float = 1.5,  # 기본값 1.5 (약간 빠름)
+        speed: float = 1.2,  # 기본값 1.2배속
         volume: int = 0,  # 무시됨
         pitch: int = 0,  # 무시됨
         emotion: str = "neutral",  # 무시됨
@@ -326,7 +326,7 @@ class ExternalService:
             text: 변환할 텍스트
             output_path: 저장할 파일 경로
             speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
-            speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.5)
+            speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.2)
             volume: 무시됨
             pitch: 무시됨
             emotion: 무시됨
