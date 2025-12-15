@@ -248,12 +248,39 @@ class ExternalService:
                 os.remove(temp_path)
             await file.seek(0)
 
+    def _convert_speed_to_openai(self, speed: float) -> float:
+        """
+        Clova Voice 스타일 속도(-5~5)를 OpenAI TTS 속도(0.25~4.0)로 변환
+
+        Args:
+            speed: Clova 스타일 속도 (-5~5) 또는 OpenAI 스타일 속도 (0.25~4.0)
+
+        Returns:
+            OpenAI TTS 속도 (0.25~4.0)
+        """
+        # 이미 OpenAI 범위인 경우 (0.25~4.0)
+        if 0.25 <= speed <= 4.0:
+            return speed
+
+        # Clova 스타일 변환 (-5~5)
+        if speed >= 0:
+            # 0 (normal) -> 1.5 (약간 빠름)
+            # 5 (fastest) -> 4.0 (fastest)
+            openai_speed = 1.5 + (speed * 0.5)
+        else:
+            # -5 (slowest) -> 0.75 (느림)
+            # 0 (normal) -> 1.5 (약간 빠름)
+            openai_speed = 1.5 + (speed * 0.15)
+
+        # 범위 제한
+        return max(0.25, min(4.0, openai_speed))
+
     ##### TTS (Text-to-Speech) 관련 메서드들 #####
     async def text_to_speech(
         self,
         text: str,
         speaker: str = "alloy",  # OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
-        speed: float = 1.0,  # OpenAI: 0.25 ~ 4.0
+        speed: float = 1.5,  # 기본값 1.5 (약간 빠름) - Clova의 0에 해당
         volume: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
         pitch: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
         emotion: str = "neutral",  # 무시됨 (OpenAI는 지원하지 않음)
@@ -264,7 +291,7 @@ class ExternalService:
         Args:
             text: 변환할 텍스트
             speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
-            speed: 음성 속도 (0.25 ~ 4.0, 기본값 1.0)
+            speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.5)
             volume: 무시됨
             pitch: 무시됨
             emotion: 무시됨
@@ -272,11 +299,14 @@ class ExternalService:
         Returns:
             음성 파일 바이트 데이터 (MP3)
         """
+        # 속도 변환
+        openai_speed = self._convert_speed_to_openai(speed)
+
         return await asyncio.to_thread(
             self.tts_client.text_to_speech,
             text=text,
             speaker=speaker,
-            speed=speed
+            speed=openai_speed
         )
     
     async def text_to_speech_file(
@@ -284,7 +314,7 @@ class ExternalService:
         text: str,
         output_path: str,
         speaker: str = "alloy",
-        speed: float = 1.0,
+        speed: float = 1.5,  # 기본값 1.5 (약간 빠름)
         volume: int = 0,  # 무시됨
         pitch: int = 0,  # 무시됨
         emotion: str = "neutral",  # 무시됨
@@ -296,7 +326,7 @@ class ExternalService:
             text: 변환할 텍스트
             output_path: 저장할 파일 경로
             speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
-            speed: 음성 속도 (0.25 ~ 4.0, 기본값 1.0)
+            speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.5)
             volume: 무시됨
             pitch: 무시됨
             emotion: 무시됨
@@ -304,12 +334,15 @@ class ExternalService:
         Returns:
             저장된 파일 경로
         """
+        # 속도 변환
+        openai_speed = self._convert_speed_to_openai(speed)
+
         return await asyncio.to_thread(
             self.tts_client.text_to_speech_file,
             text=text,
             output_path=output_path,
             speaker=speaker,
-            speed=speed
+            speed=openai_speed
         )
 
 
