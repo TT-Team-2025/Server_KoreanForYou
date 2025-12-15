@@ -308,7 +308,7 @@ class ExternalService:
         text: str,
         speaker: str = "alloy",  # OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
         speed: float = 1.2,  # 기본값 1.2배속
-        volume: int = 0,  # 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 기본값 6)
+        volume: int = 6,  # 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 기본값 6)
         pitch: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
         emotion: str = "neutral",  # 무시됨 (OpenAI는 지원하지 않음)
         format: str = "mp3"  # 무시됨 (OpenAI는 항상 mp3)
@@ -352,7 +352,7 @@ class ExternalService:
         output_path: str,
         speaker: str = "alloy",
         speed: float = 1.2,  # 기본값 1.2배속
-        volume: int = 0,  # 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 기본값 6)
+        volume: int = 6,  # 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 기본값 6)
         pitch: int = 0,  # 무시됨
         emotion: str = "neutral",  # 무시됨
         format: str = "mp3"  # 무시됨
