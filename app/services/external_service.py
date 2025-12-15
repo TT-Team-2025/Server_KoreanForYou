@@ -275,13 +275,40 @@ class ExternalService:
         # 범위 제한
         return max(0.25, min(4.0, openai_speed))
 
+    def _amplify_audio(self, audio_bytes: bytes, gain_db: float = 6.0) -> bytes:
+        """
+        오디오 볼륨을 증폭
+
+        Args:
+            audio_bytes: 원본 오디오 바이트 데이터
+            gain_db: 증폭할 dB 값 (기본값 6.0dB = 약 2배)
+
+        Returns:
+            증폭된 오디오 바이트 데이터
+        """
+        try:
+            import io
+            # 바이트를 AudioSegment로 변환
+            audio = AudioSegment.from_mp3(io.BytesIO(audio_bytes))
+
+            # 볼륨 증폭
+            amplified_audio = audio + gain_db
+
+            # 다시 바이트로 변환
+            output_buffer = io.BytesIO()
+            amplified_audio.export(output_buffer, format="mp3")
+            return output_buffer.getvalue()
+        except Exception as e:
+            logger.warning(f"오디오 증폭 실패, 원본 반환: {e}")
+            return audio_bytes
+
     ##### TTS (Text-to-Speech) 관련 메서드들 #####
     async def text_to_speech(
         self,
         text: str,
         speaker: str = "alloy",  # OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
         speed: float = 1.2,  # 기본값 1.2배속
-        volume: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
+        volume: int = 0,  # 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 기본값 6)
         pitch: int = 0,  # 무시됨 (OpenAI는 지원하지 않음)
         emotion: str = "neutral",  # 무시됨 (OpenAI는 지원하지 않음)
         format: str = "mp3"  # 무시됨 (OpenAI는 항상 mp3)
@@ -292,7 +319,7 @@ class ExternalService:
             text: 변환할 텍스트
             speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
             speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.2)
-            volume: 무시됨
+            volume: 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 12 = 약 4배, 기본값 6)
             pitch: 무시됨
             emotion: 무시됨
             format: 무시됨 (항상 mp3)
@@ -302,12 +329,22 @@ class ExternalService:
         # 속도 변환
         openai_speed = self._convert_speed_to_openai(speed)
 
-        return await asyncio.to_thread(
+        audio_bytes = await asyncio.to_thread(
             self.tts_client.text_to_speech,
             text=text,
             speaker=speaker,
             speed=openai_speed
         )
+
+        # 볼륨 증폭 (volume > 0일 때만)
+        if volume > 0:
+            audio_bytes = await asyncio.to_thread(
+                self._amplify_audio,
+                audio_bytes,
+                gain_db=float(volume)
+            )
+
+        return audio_bytes
     
     async def text_to_speech_file(
         self,
@@ -315,7 +352,7 @@ class ExternalService:
         output_path: str,
         speaker: str = "alloy",
         speed: float = 1.2,  # 기본값 1.2배속
-        volume: int = 0,  # 무시됨
+        volume: int = 0,  # 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 기본값 6)
         pitch: int = 0,  # 무시됨
         emotion: str = "neutral",  # 무시됨
         format: str = "mp3"  # 무시됨
@@ -327,7 +364,7 @@ class ExternalService:
             output_path: 저장할 파일 경로
             speaker: 음성 종류 (alloy, echo, fable, onyx, nova, shimmer)
             speed: 음성 속도 (Clova: -5~5 또는 OpenAI: 0.25~4.0, 기본값 1.2)
-            volume: 무시됨
+            volume: 볼륨 증폭 dB (0 = 원본, 6 = 약 2배, 12 = 약 4배, 기본값 6)
             pitch: 무시됨
             emotion: 무시됨
             format: 무시됨
@@ -337,13 +374,29 @@ class ExternalService:
         # 속도 변환
         openai_speed = self._convert_speed_to_openai(speed)
 
-        return await asyncio.to_thread(
-            self.tts_client.text_to_speech_file,
+        audio_bytes = await asyncio.to_thread(
+            self.tts_client.text_to_speech,
             text=text,
-            output_path=output_path,
             speaker=speaker,
             speed=openai_speed
         )
+
+        # 볼륨 증폭 (volume > 0일 때만)
+        if volume > 0:
+            audio_bytes = await asyncio.to_thread(
+                self._amplify_audio,
+                audio_bytes,
+                gain_db=float(volume)
+            )
+
+        # 디렉토리가 없으면 생성
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        # 파일로 저장
+        with open(output_path, "wb") as f:
+            f.write(audio_bytes)
+
+        return output_path
 
 
 

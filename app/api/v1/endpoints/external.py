@@ -21,9 +21,9 @@ router = APIRouter()
 class TTSRequest(BaseModel):
     """TTS 요청 스키마"""
     text: str
-    speaker: str = "nara"
-    speed: int = 0
-    volume: int = 0
+    speaker: str = "alloy"  # OpenAI 기본 voice
+    speed: float = 1.2  # 1.2배속
+    volume: int = 6  # 볼륨 증폭 6dB (약 2배)
     pitch: int = 0
     emotion: str = "neutral"
     format: str = "mp3"
@@ -87,9 +87,9 @@ async def text_to_speech(
 @router.post("/tts/file")
 async def text_to_speech_file(
     text: str = Form(...),
-    speaker: str = Form("nara"),
-    speed: int = Form(0),
-    volume: int = Form(0),
+    speaker: str = Form("alloy"),
+    speed: float = Form(1.2),
+    volume: int = Form(6),
     pitch: int = Form(0),
     emotion: str = Form("neutral"),
     format: str = Form("mp3"),

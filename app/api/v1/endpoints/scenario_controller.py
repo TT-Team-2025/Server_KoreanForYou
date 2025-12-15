@@ -84,7 +84,7 @@ async def start_session(
                 text=assistant_text,
                 speaker="nara_call",  # 기본 음성
                 speed=1,
-                volume=0,
+                volume=6,  # 볼륨 증폭 6dB (약 2배)
                 pitch=0,
                 emotion="neutral",
                 format="mp3"
@@ -137,7 +137,7 @@ async def send_message(req: SendMessageRequest, db: AsyncSession = Depends(get_d
                 text=assistant_text,
                 speaker="nara_call",
                 speed=1,
-                volume=0,
+                volume=6,  # 볼륨 증폭 6dB (약 2배)
                 pitch=0,
                 emotion="neutral",
                 format="mp3",
